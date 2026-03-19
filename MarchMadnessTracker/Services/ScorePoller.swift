@@ -151,6 +151,7 @@ class ScorePoller {
                 self.todayGames = response.events
                 self.lastUpdated = Date()
                 self.isLoading = false
+                self.shareDataWithWidget()
             }
         } catch {
             await MainActor.run {
@@ -158,6 +159,40 @@ class ScorePoller {
                 self.isLoading = false
             }
         }
+    }
+
+    /// Write game data to App Group UserDefaults so WidgetKit can read it
+    private func shareDataWithWidget() {
+        let sharedGames: [SharedGame] = games.map { event in
+            let headline = event.notes?.first?.headline
+            let parts = headline?.components(separatedBy: " - ") ?? []
+            return SharedGame(
+                id: event.id,
+                awayTeam: event.awayCompetitor?.team.displayName ?? "TBD",
+                awayAbbreviation: event.awayCompetitor?.team.abbreviation ?? "TBD",
+                awayScore: event.awayCompetitor?.score ?? "0",
+                awaySeed: event.awayCompetitor?.seed,
+                awayLogo: event.awayCompetitor?.team.logo,
+                awayColor: event.awayCompetitor?.team.color,
+                homeTeam: event.homeCompetitor?.team.displayName ?? "TBD",
+                homeAbbreviation: event.homeCompetitor?.team.abbreviation ?? "TBD",
+                homeScore: event.homeCompetitor?.score ?? "0",
+                homeSeed: event.homeCompetitor?.seed,
+                homeLogo: event.homeCompetitor?.team.logo,
+                homeColor: event.homeCompetitor?.team.color,
+                state: event.status.type.state,
+                detail: event.status.type.detail,
+                shortDetail: event.status.type.shortDetail,
+                period: event.status.period,
+                displayClock: event.status.displayClock,
+                startDate: event.startDate,
+                roundName: parts.last?.trimmingCharacters(in: .whitespaces),
+                regionName: parts.count >= 2 ? parts[parts.count - 2].trimmingCharacters(in: .whitespaces) : nil,
+                broadcast: event.competition?.broadcasts?.first?.names?.first,
+                isUpset: event.isUpset
+            )
+        }
+        SharedDataManager.saveGames(sharedGames)
     }
 
     func fetchAllTournamentGames() async {

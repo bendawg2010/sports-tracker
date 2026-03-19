@@ -9,17 +9,82 @@ struct BracketProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (BracketEntry) -> Void) {
-        let games = SharedDataManager.loadGames()
-        completion(BracketEntry(date: Date(), games: games.isEmpty ? sampleGames : games))
+        if context.isPreview {
+            completion(BracketEntry(date: Date(), games: sampleGames))
+            return
+        }
+        // Fetch from ESPN directly
+        Task {
+            let games = await fetchScores()
+            completion(BracketEntry(date: Date(), games: games))
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<BracketEntry>) -> Void) {
-        let games = SharedDataManager.loadGames()
-        let entry = BracketEntry(date: Date(), games: games.isEmpty ? sampleGames : games)
-        let hasLive = games.contains { $0.isLive }
-        let nextUpdate = Calendar.current.date(byAdding: .minute, value: hasLive ? 2 : 15, to: Date())!
-        let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
-        completion(timeline)
+        Task {
+            let games = await fetchScores()
+            let entry = BracketEntry(date: Date(), games: games.isEmpty ? sampleGames : games)
+            let hasLive = games.contains { $0.isLive }
+            let nextUpdate = Calendar.current.date(byAdding: .minute, value: hasLive ? 2 : 15, to: Date())!
+            let timeline = Timeline(entries: [entry], policy: .after(nextUpdate))
+            completion(timeline)
+        }
+    }
+
+    private func fetchScores() async -> [SharedGame] {
+        guard let url = URL(string: "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=100") else {
+            return sampleGames
+        }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let events = json?["events"] as? [[String: Any]] else { return sampleGames }
+            return events.compactMap { event -> SharedGame? in
+                guard let id = event["id"] as? String,
+                      let competitions = event["competitions"] as? [[String: Any]],
+                      let comp = competitions.first,
+                      let competitors = comp["competitors"] as? [[String: Any]],
+                      let status = event["status"] as? [String: Any],
+                      let statusType = status["type"] as? [String: Any],
+                      let state = statusType["state"] as? String else { return nil }
+                let away = competitors.first { ($0["homeAway"] as? String) == "away" }
+                let home = competitors.first { ($0["homeAway"] as? String) == "home" }
+                let awayTeam = away?["team"] as? [String: Any]
+                let homeTeam = home?["team"] as? [String: Any]
+                let awayRank = away?["curatedRank"] as? [String: Any]
+                let homeRank = home?["curatedRank"] as? [String: Any]
+                let notes = event["notes"] as? [[String: Any]]
+                let headline = notes?.first?["headline"] as? String
+                let parts = headline?.components(separatedBy: " - ") ?? []
+                return SharedGame(
+                    id: id,
+                    awayTeam: awayTeam?["displayName"] as? String ?? "TBD",
+                    awayAbbreviation: awayTeam?["abbreviation"] as? String ?? "TBD",
+                    awayScore: away?["score"] as? String ?? "0",
+                    awaySeed: awayRank?["current"] as? Int,
+                    awayLogo: awayTeam?["logo"] as? String,
+                    awayColor: awayTeam?["color"] as? String,
+                    homeTeam: homeTeam?["displayName"] as? String ?? "TBD",
+                    homeAbbreviation: homeTeam?["abbreviation"] as? String ?? "TBD",
+                    homeScore: home?["score"] as? String ?? "0",
+                    homeSeed: homeRank?["current"] as? Int,
+                    homeLogo: homeTeam?["logo"] as? String,
+                    homeColor: homeTeam?["color"] as? String,
+                    state: state,
+                    detail: statusType["detail"] as? String,
+                    shortDetail: statusType["shortDetail"] as? String,
+                    period: status["period"] as? Int ?? 0,
+                    displayClock: status["displayClock"] as? String,
+                    startDate: nil,
+                    roundName: parts.last?.trimmingCharacters(in: .whitespaces),
+                    regionName: parts.count >= 2 ? parts[parts.count - 2].trimmingCharacters(in: .whitespaces) : nil,
+                    broadcast: nil,
+                    isUpset: false
+                )
+            }
+        } catch {
+            return sampleGames
+        }
     }
 }
 

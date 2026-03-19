@@ -9,39 +9,34 @@ struct LiveScoreProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ScoreEntry) -> Void) {
-        let games = SharedDataManager.loadGames()
-        completion(ScoreEntry(date: Date(), games: games.isEmpty ? sampleGames : games))
+        if context.isPreview {
+            completion(ScoreEntry(date: Date(), games: sampleGames))
+            return
+        }
+        Task {
+            let games = await fetchLiveScores()
+            completion(ScoreEntry(date: Date(), games: games))
+        }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ScoreEntry>) -> Void) {
-        // Fetch fresh data from ESPN directly in widget
         Task {
             let games = await fetchLiveScores()
-            let entry = ScoreEntry(date: Date(), games: games)
-            // Refresh every 60 seconds (WidgetKit won't refresh faster than ~5min for budget reasons,
-            // but we set it to ask frequently)
-            let nextUpdate = Calendar.current.date(byAdding: .minute, value: 5, to: Date())!
+            let entry = ScoreEntry(date: Date(), games: games.isEmpty ? sampleGames : games)
             let hasLive = games.contains { $0.isLive }
-            let refreshDate = hasLive
-                ? Calendar.current.date(byAdding: .minute, value: 1, to: Date())!
-                : nextUpdate
+            let refreshDate = Calendar.current.date(
+                byAdding: .minute,
+                value: hasLive ? 1 : 5,
+                to: Date()
+            )!
             let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
             completion(timeline)
         }
     }
 
     private func fetchLiveScores() async -> [SharedGame] {
-        // Try shared data first
-        let shared = SharedDataManager.loadGames()
-        if !shared.isEmpty,
-           let lastUpdate = SharedDataManager.lastUpdated(),
-           Date().timeIntervalSince(lastUpdate) < 120 {
-            return shared
-        }
-
-        // Fallback: fetch directly
         guard let url = URL(string: "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=100") else {
-            return shared
+            return sampleGames
         }
 
         do {
@@ -88,7 +83,7 @@ struct LiveScoreProvider: TimelineProvider {
                 )
             }
         } catch {
-            return shared
+            return sampleGames
         }
     }
 }

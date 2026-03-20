@@ -68,7 +68,7 @@ struct GameRowView: View {
             }
             .buttonStyle(.plain)
 
-            // Widget pin button — separate from main row button so taps don't conflict
+            // Widget pin button — ALWAYS visible so user can find it
             Button {
                 NotificationCenter.default.post(
                     name: .createGameWidget,
@@ -76,21 +76,25 @@ struct GameRowView: View {
                     userInfo: ["eventId": event.id]
                 )
             } label: {
-                VStack {
+                VStack(spacing: 2) {
                     Spacer()
-                    Image(systemName: "macwindow.badge.plus")
-                        .font(.system(size: 12))
-                        .foregroundStyle(isHovered ? Color.accentColor : Color.clear)
-                    Text("Widget")
-                        .font(.system(size: 7, weight: .medium))
-                        .foregroundStyle(isHovered ? Color.accentColor : Color.clear)
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.accentColor)
+                    Text("Pin")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
                     Spacer()
                 }
-                .frame(width: 44)
+                .frame(width: 40)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(Color.accentColor.opacity(isHovered ? 0.15 : 0.08))
+                )
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Pin as floating widget")
+            .help("Pin as floating widget on your desktop")
         }
         .background(backgroundStyle)
         .clipShape(RoundedRectangle(cornerRadius: 6))

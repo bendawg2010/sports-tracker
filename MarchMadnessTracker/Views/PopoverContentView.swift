@@ -11,6 +11,7 @@ struct PopoverContentView: View {
         case scores = "Scores"
         case bracket = "Bracket"
         case schedule = "Schedule"
+        case watch = "Watch"
     }
 
     var body: some View {
@@ -58,6 +59,8 @@ struct PopoverContentView: View {
                     BracketView(poller: poller)
                 case .schedule:
                     ScheduleView(poller: poller)
+                case .watch:
+                    WatchView(poller: poller)
                 }
             }
             .frame(maxHeight: .infinity)

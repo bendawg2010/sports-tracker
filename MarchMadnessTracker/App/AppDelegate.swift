@@ -8,6 +8,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var widgetWindows: [String: ScoreWidgetWindow] = [:]
     private var settingsWindow: NSWindow?
     private var gameDetailWindows: [String: NSWindow] = [:]
+    private var watchWindows: [String: NSWindow] = [:]
+    private var multiviewWindow: NSWindow?
     let poller = ScorePoller()
     let notificationService = NotificationService()
     private var wasAutoHidden = false
@@ -206,6 +208,79 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                   let event = self?.poller.games.first(where: { $0.id == eventId }) else { return }
             self?.createWidget(for: event)
         }
+
+        // Watch notifications
+        NotificationCenter.default.addObserver(
+            forName: .openWatchPortal,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.openWatchPortal()
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .openWatchGame,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let eventId = notification.userInfo?["eventId"] as? String,
+                  let event = self?.poller.games.first(where: { $0.id == eventId }) else { return }
+            self?.openWatchGame(event)
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: .openMultiview,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.openMultiview()
+        }
+    }
+
+    // MARK: - Watch
+
+    private func openWatchPortal() {
+        let url = URL(string: "https://www.ncaa.com/march-madness-live/watch")!
+        let window = WatchGameWindow(url: url, title: "🏀 March Madness Live")
+        watchWindows["portal"] = window
+    }
+
+    private func openWatchGame(_ event: Event) {
+        if let existing = watchWindows[event.id], existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        // Try ESPN watch page for the specific game
+        let url = URL(string: "https://www.espn.com/mens-college-basketball/game/_/gameId/\(event.id)")!
+        let away = event.awayCompetitor?.team.abbreviation ?? "Away"
+        let home = event.homeCompetitor?.team.abbreviation ?? "Home"
+        let window = WatchGameWindow(url: url, title: "📺 \(away) vs \(home)")
+        watchWindows[event.id] = window
+    }
+
+    private func openMultiview() {
+        if let existing = multiviewWindow, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let liveGames = poller.games.filter { $0.isLive }
+        let gamesToShow = Array(liveGames.prefix(4))
+
+        if gamesToShow.isEmpty { return }
+
+        let streams: [(url: URL, title: String)] = gamesToShow.compactMap { game in
+            let away = game.awayCompetitor?.team.abbreviation ?? "Away"
+            let home = game.homeCompetitor?.team.abbreviation ?? "Home"
+            let url = URL(string: "https://www.ncaa.com/march-madness-live/watch")!
+            return (url: url, title: "\(away) vs \(home)")
+        }
+
+        let window = MultiviewWindow(urls: streams)
+        multiviewWindow = window
     }
 
     // MARK: - Ticker Size

@@ -22,4 +22,7 @@ enum Constants {
 extension Notification.Name {
     static let openGameDetail = Notification.Name("openGameDetail")
     static let createGameWidget = Notification.Name("createGameWidget")
+    static let openWatchPortal = Notification.Name("openWatchPortal")
+    static let openWatchGame = Notification.Name("openWatchGame")
+    static let openMultiview = Notification.Name("openMultiview")
 }

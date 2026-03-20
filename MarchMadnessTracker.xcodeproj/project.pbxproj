@@ -7,40 +7,42 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A10000010000000000000001 /* MarchMadnessTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001; };
-		A10000010000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002; };
-		A10000010000000000000003 /* Game.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003; };
-		A10000010000000000000004 /* BracketData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004; };
-		A10000010000000000000005 /* ESPNService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005; };
-		A10000010000000000000006 /* ScorePoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006; };
-		A10000010000000000000007 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007; };
-		A10000010000000000000008 /* PopoverContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008; };
-		A10000010000000000000009 /* ScoreboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009; };
-		A1000001000000000000000A /* GameRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000A; };
-		A1000001000000000000000B /* BracketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000B; };
-		A1000001000000000000000C /* BracketRegionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000C; };
-		A1000001000000000000000D /* BracketMatchupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000D; };
-		A1000001000000000000000E /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000E; };
-		A1000001000000000000000F /* ScheduleRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000F; };
-		A10000010000000000000010 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000010; };
-		A10000010000000000000011 /* TeamLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011; };
-		A10000010000000000000012 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012; };
-		A10000010000000000000013 /* DateFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013; };
-		A10000010000000000000014 /* ToolbarWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000014; };
-		A10000010000000000000015 /* ToolbarTickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015; };
-		A10000010000000000000016 /* ColorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016; };
-		A10000010000000000000017 /* GameDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017; };
-		A10000010000000000000018 /* ScoreWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018; };
-		A10000010000000000000019 /* ScoreWidgetWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019; };
-		A10000010000000000000020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020; };
-		A10000010000000000000030 /* SharedGameData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030; };
-		/* Widget Extension Build Files */
-		B10000010000000000000001 /* ScoreWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000001; };
-		B10000010000000000000002 /* LiveScoreWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000002; };
-		B10000010000000000000003 /* BracketWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000003; };
-		B10000010000000000000004 /* SharedGameData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030; };
-		B10000010000000000000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020; };
-		B10000010000000000000010 /* ScoreWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B20000010000000000000099; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A10000010000000000000001 /* MarchMadnessTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000001 /* MarchMadnessTrackerApp.swift */; };
+		A10000010000000000000002 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000002 /* AppDelegate.swift */; };
+		A10000010000000000000003 /* Game.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000003 /* Game.swift */; };
+		A10000010000000000000004 /* BracketData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000004 /* BracketData.swift */; };
+		A10000010000000000000005 /* ESPNService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000005 /* ESPNService.swift */; };
+		A10000010000000000000006 /* ScorePoller.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000006 /* ScorePoller.swift */; };
+		A10000010000000000000007 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000007 /* NotificationService.swift */; };
+		A10000010000000000000008 /* PopoverContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000008 /* PopoverContentView.swift */; };
+		A10000010000000000000009 /* ScoreboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000009 /* ScoreboardView.swift */; };
+		A1000001000000000000000A /* GameRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000A /* GameRowView.swift */; };
+		A1000001000000000000000B /* BracketView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000B /* BracketView.swift */; };
+		A1000001000000000000000C /* BracketRegionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000C /* BracketRegionView.swift */; };
+		A1000001000000000000000D /* BracketMatchupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000D /* BracketMatchupView.swift */; };
+		A1000001000000000000000E /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000E /* ScheduleView.swift */; };
+		A1000001000000000000000F /* ScheduleRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000001000000000000000F /* ScheduleRowView.swift */; };
+		A10000010000000000000010 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000010 /* SettingsView.swift */; };
+		A10000010000000000000011 /* TeamLogoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000011 /* TeamLogoView.swift */; };
+		A10000010000000000000012 /* Constants.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000012 /* Constants.swift */; };
+		A10000010000000000000013 /* DateFormatters.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000013 /* DateFormatters.swift */; };
+		A10000010000000000000014 /* ToolbarWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000014 /* ToolbarWindow.swift */; };
+		A10000010000000000000015 /* ToolbarTickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000015 /* ToolbarTickerView.swift */; };
+		A10000010000000000000016 /* ColorExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000016 /* ColorExtension.swift */; };
+		A10000010000000000000017 /* GameDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000017 /* GameDetailView.swift */; };
+		A10000010000000000000018 /* ScoreWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000018 /* ScoreWidgetView.swift */; };
+		A10000010000000000000019 /* ScoreWidgetWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000019 /* ScoreWidgetWindow.swift */; };
+		A10000010000000000000020 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020 /* Assets.xcassets */; };
+		A10000010000000000000030 /* SharedGameData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030 /* SharedGameData.swift */; };
+		A10000010000000000000031 /* WatchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000031 /* WatchView.swift */; };
+		A10000010000000000000032 /* WatchGameWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000032 /* WatchGameWindow.swift */; };
+		A10000010000000000000033 /* MultiviewWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000033 /* MultiviewWindow.swift */; };
+		B10000010000000000000001 /* ScoreWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000001 /* ScoreWidgetBundle.swift */; };
+		B10000010000000000000002 /* LiveScoreWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000002 /* LiveScoreWidget.swift */; };
+		B10000010000000000000003 /* BracketWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000010000000000000003 /* BracketWidget.swift */; };
+		B10000010000000000000004 /* SharedGameData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000030 /* SharedGameData.swift */; };
+		B10000010000000000000005 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000010000000000000020 /* Assets.xcassets */; };
+		B10000010000000000000010 /* ScoreWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B20000010000000000000099 /* ScoreWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -97,8 +99,10 @@
 		A20000010000000000000021 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A20000010000000000000022 /* MarchMadnessTracker.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MarchMadnessTracker.entitlements; sourceTree = "<group>"; };
 		A20000010000000000000030 /* SharedGameData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedGameData.swift; sourceTree = "<group>"; };
+		A20000010000000000000031 /* WatchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchView.swift; sourceTree = "<group>"; };
+		A20000010000000000000032 /* WatchGameWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchGameWindow.swift; sourceTree = "<group>"; };
+		A20000010000000000000033 /* MultiviewWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultiviewWindow.swift; sourceTree = "<group>"; };
 		A20000010000000000000099 /* MarchMadnessTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MarchMadnessTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		/* Widget Extension Files */
 		B20000010000000000000001 /* ScoreWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoreWidgetBundle.swift; sourceTree = "<group>"; };
 		B20000010000000000000002 /* LiveScoreWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveScoreWidget.swift; sourceTree = "<group>"; };
 		B20000010000000000000003 /* BracketWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BracketWidget.swift; sourceTree = "<group>"; };
@@ -125,7 +129,7 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		A40000010000000000000001 /* root */ = {
+		A40000010000000000000001 = {
 			isa = PBXGroup;
 			children = (
 				A40000010000000000000002 /* MarchMadnessTracker */,
@@ -133,15 +137,6 @@
 				B40000010000000000000001 /* ScoreWidget */,
 				A40000010000000000000099 /* Products */,
 			);
-			sourceTree = "<group>";
-		};
-		A40000010000000000000099 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				A20000010000000000000099 /* MarchMadnessTracker.app */,
-				B20000010000000000000099 /* ScoreWidgetExtension.appex */,
-			);
-			name = Products;
 			sourceTree = "<group>";
 		};
 		A40000010000000000000002 /* MarchMadnessTracker */ = {
@@ -157,14 +152,6 @@
 				A20000010000000000000022 /* MarchMadnessTracker.entitlements */,
 			);
 			path = MarchMadnessTracker;
-			sourceTree = "<group>";
-		};
-		A40000010000000000000015 /* Shared */ = {
-			isa = PBXGroup;
-			children = (
-				A20000010000000000000030 /* SharedGameData.swift */,
-			);
-			path = Shared;
 			sourceTree = "<group>";
 		};
 		A40000010000000000000003 /* App */ = {
@@ -203,19 +190,21 @@
 				A40000010000000000000008 /* Bracket */,
 				A40000010000000000000009 /* Schedule */,
 				A40000010000000000000014 /* Toolbar */,
+				A40000010000000000000017 /* Watch */,
 				A40000010000000000000010 /* Settings */,
 				A40000010000000000000011 /* Components */,
 			);
 			path = Views;
 			sourceTree = "<group>";
 		};
-		A40000010000000000000014 /* Toolbar */ = {
+		A40000010000000000000017 /* Watch */ = {
 			isa = PBXGroup;
 			children = (
-				A20000010000000000000014 /* ToolbarWindow.swift */,
-				A20000010000000000000015 /* ToolbarTickerView.swift */,
+				A20000010000000000000031 /* WatchView.swift */,
+				A20000010000000000000032 /* WatchGameWindow.swift */,
+				A20000010000000000000033 /* MultiviewWindow.swift */,
 			);
-			path = Toolbar;
+			path = Watch;
 			sourceTree = "<group>";
 		};
 		A40000010000000000000007 /* Scoreboard */ = {
@@ -281,6 +270,32 @@
 				A20000010000000000000020 /* Assets.xcassets */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		A40000010000000000000014 /* Toolbar */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000014 /* ToolbarWindow.swift */,
+				A20000010000000000000015 /* ToolbarTickerView.swift */,
+			);
+			path = Toolbar;
+			sourceTree = "<group>";
+		};
+		A40000010000000000000015 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000030 /* SharedGameData.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A40000010000000000000099 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000010000000000000099 /* MarchMadnessTracker.app */,
+				B20000010000000000000099 /* ScoreWidgetExtension.appex */,
+			);
+			name = Products;
 			sourceTree = "<group>";
 		};
 		B40000010000000000000001 /* ScoreWidget */ = {
@@ -360,7 +375,7 @@
 				en,
 				Base,
 			);
-			mainGroup = A40000010000000000000001 /* root */;
+			mainGroup = A40000010000000000000001;
 			productRefGroup = A40000010000000000000099 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -421,6 +436,9 @@
 				A10000010000000000000018 /* ScoreWidgetView.swift in Sources */,
 				A10000010000000000000019 /* ScoreWidgetWindow.swift in Sources */,
 				A10000010000000000000030 /* SharedGameData.swift in Sources */,
+				A10000010000000000000031 /* WatchView.swift in Sources */,
+				A10000010000000000000032 /* WatchGameWindow.swift in Sources */,
+				A10000010000000000000033 /* MultiviewWindow.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -571,6 +589,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 56CAJP3P64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MarchMadnessTracker/Info.plist;
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -596,6 +615,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 56CAJP3P64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MarchMadnessTracker/Info.plist;
 				INFOPLIST_KEY_LSUIElement = YES;
@@ -612,13 +632,13 @@
 			};
 			name = Release;
 		};
-		/* Widget Extension Build Configs */
 		B90000010000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ScoreWidget/ScoreWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 56CAJP3P64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ScoreWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Score Widget";
@@ -643,6 +663,7 @@
 				CODE_SIGN_ENTITLEMENTS = ScoreWidget/ScoreWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 56CAJP3P64;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ScoreWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Score Widget";
@@ -692,7 +713,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = A80000010000000000000001 /* Project object */;
 }

@@ -9,15 +9,18 @@ struct ScheduleRowView: View {
             VStack {
                 if let date = event.startDate {
                     Text(DateFormatters.timeOnly.string(from: date))
-                        .font(.caption)
-                        .fontWeight(.medium)
+                        .font(.system(size: 13, weight: .semibold))
+                } else if let detail = event.status.type.detail {
+                    // ESPN puts time in status detail like "7:10 PM ET"
+                    Text(detail)
+                        .font(.system(size: 12, weight: .medium))
                 } else {
                     Text("TBD")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            .frame(width: 60, alignment: .leading)
+            .frame(width: 75, alignment: .leading)
 
             // Teams
             VStack(alignment: .leading, spacing: 2) {

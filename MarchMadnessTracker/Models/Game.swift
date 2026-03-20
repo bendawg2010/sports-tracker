@@ -44,7 +44,7 @@ struct Event: Codable, Identifiable {
     }
 
     var startDate: Date? {
-        DateFormatters.espnISO.date(from: date)
+        DateFormatters.parseESPNDate(date)
     }
 
     /// The tournament headline from either event notes or competition notes

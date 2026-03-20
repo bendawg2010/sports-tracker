@@ -14,6 +14,18 @@ enum DateFormatters {
         return f
     }()
 
+    // ESPN sometimes sends dates without fractional seconds
+    static let espnISONoFraction: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    /// Parse ESPN date string — tries with and without fractional seconds
+    static func parseESPNDate(_ dateString: String) -> Date? {
+        espnISO.date(from: dateString) ?? espnISONoFraction.date(from: dateString)
+    }
+
     static let timeOnly: DateFormatter = {
         let f = DateFormatter()
         f.dateStyle = .none

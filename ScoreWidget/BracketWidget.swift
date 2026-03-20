@@ -326,7 +326,7 @@ struct BracketWidgetView: View {
         // Draws ┐     or     ┌
         //       ├──   or  ──┤
         //       ┘     or     └
-        let lineColor = Color.secondary.opacity(0.3)
+        let lineColor = Color.white.opacity(0.3)
         let lineW: CGFloat = 0.5
 
         return HStack(spacing: 0) {
@@ -385,23 +385,23 @@ struct BracketWidgetView: View {
             teamLine(seed: game.homeSeed, abbr: game.homeAbbreviation, score: game.homeScore,
                      winning: hLeads(game), live: game.isLive, done: game.isFinal)
         }
-        .background(RoundedRectangle(cornerRadius: 2).fill(Color(nsColor: .windowBackgroundColor).opacity(0.7)))
+        .background(RoundedRectangle(cornerRadius: 2).fill(Color.black.opacity(0.5)))
         .overlay(RoundedRectangle(cornerRadius: 2).stroke(game.isLive ? Color.red.opacity(0.6) : Color.secondary.opacity(0.12), lineWidth: game.isLive ? 1 : 0.5))
     }
 
     private func teamLine(seed: Int?, abbr: String, score: String, winning: Bool, live: Bool, done: Bool) -> some View {
         HStack(spacing: 1) {
             if let s = seed {
-                Text("\(s)").font(.system(size: 6, weight: .medium, design: .monospaced)).foregroundStyle(.secondary).frame(width: 8, alignment: .trailing)
+                Text("\(s)").font(.system(size: 6, weight: .medium, design: .monospaced)).foregroundColor(.white.opacity(0.5)).frame(width: 8, alignment: .trailing)
             }
-            Text(abbr).font(.system(size: 7, weight: winning ? .bold : .regular)).lineLimit(1)
+            Text(abbr).font(.system(size: 7, weight: winning ? .bold : .regular)).foregroundColor(winning ? .white : .white.opacity(0.7)).lineLimit(1)
             Spacer(minLength: 0)
             if live || done {
-                Text(score).font(.system(size: 7, weight: .bold, design: .monospaced)).foregroundStyle(live ? .red : (winning ? .primary : .secondary))
+                Text(score).font(.system(size: 7, weight: .bold, design: .monospaced)).foregroundColor(live ? .red : (winning ? .white : .white.opacity(0.4)))
             }
         }
-        .padding(.horizontal, 2).padding(.vertical, 1)
-        .background(winning && done ? Color.green.opacity(0.06) : Color.clear)
+        .padding(.horizontal, 2).padding(.vertical, 1.5)
+        .background(winning && done ? Color.green.opacity(0.15) : Color.clear)
     }
 
     private func aLeads(_ g: SharedGame) -> Bool { guard let a = g.awayScoreInt, let h = g.homeScoreInt else { return false }; return a > h }

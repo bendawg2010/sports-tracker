@@ -254,9 +254,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let away = event.awayCompetitor?.team.abbreviation ?? "Away"
         let home = event.homeCompetitor?.team.abbreviation ?? "Home"
-        // ESPN game page works with our event IDs and has embedded video player
+        // ESPN game page — loads specific game with live stats, play-by-play, and video
         let url = URL(string: "https://www.espn.com/mens-college-basketball/game/_/gameId/\(event.id)")!
-        let window = WatchGameWindow(url: url, title: "\(away) vs \(home)")
+        let window = WatchGameWindow(url: url, title: "🏀 \(away) vs \(home)")
         watchWindows[event.id] = window
     }
 
@@ -279,7 +279,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let streams: [(url: URL, title: String)] = gamesToShow.compactMap { game in
             let away = game.awayCompetitor?.team.abbreviation ?? "Away"
             let home = game.homeCompetitor?.team.abbreviation ?? "Home"
-            // ESPN game page works with our event IDs — each tile gets its specific game
+            // ESPN game page — each tile loads the specific game with live content
             let url = URL(string: "https://www.espn.com/mens-college-basketball/game/_/gameId/\(game.id)")!
             return (url: url, title: "\(away) vs \(home)")
         }

@@ -26,13 +26,23 @@ struct BracketProvider: TimelineProvider {
     }
 
     private func fetchScores() async -> [SharedGame] {
-        guard let url = URL(string: "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=100&limit=100") else { return [] }
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            guard let events = json?["events"] as? [[String: Any]] else { return [] }
-            return events.compactMap { parseEvent($0) }
-        } catch { return [] }
+        // Try multiple date ranges to find tournament games
+        let urls = [
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=100&limit=100",
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=100&limit=100&dates=20260320",
+            "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=100&limit=100&dates=20260319-20260321"
+        ]
+        for urlString in urls {
+            guard let url = URL(string: urlString) else { continue }
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                guard let events = json?["events"] as? [[String: Any]], !events.isEmpty else { continue }
+                let games = events.compactMap { parseEvent($0) }
+                if !games.isEmpty { return games }
+            } catch { continue }
+        }
+        return []
     }
 
     private func parseEvent(_ event: [String: Any]) -> SharedGame? {
@@ -46,12 +56,23 @@ struct BracketProvider: TimelineProvider {
         let home = competitors.first { ($0["homeAway"] as? String) == "home" }
         let aT = away?["team"] as? [String: Any]; let hT = home?["team"] as? [String: Any]
         let aR = away?["curatedRank"] as? [String: Any]; let hR = home?["curatedRank"] as? [String: Any]
+        // Parse headline for round/region - check both event-level and competition-level notes
         let headline = (event["notes"] as? [[String: Any]])?.first?["headline"] as? String
             ?? (comp["notes"] as? [[String: Any]])?.first?["headline"] as? String
         let parts = headline?.components(separatedBy: " - ") ?? []
         var region: String? = nil
-        if parts.count >= 2 { region = parts[parts.count - 2].trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " Region", with: "") }
-        return SharedGame(id: id, awayTeam: aT?["displayName"] as? String ?? "TBD", awayAbbreviation: aT?["abbreviation"] as? String ?? "TBD", awayScore: away?["score"] as? String ?? "0", awaySeed: aR?["current"] as? Int, awayLogo: aT?["logo"] as? String, awayColor: aT?["color"] as? String, homeTeam: hT?["displayName"] as? String ?? "TBD", homeAbbreviation: hT?["abbreviation"] as? String ?? "TBD", homeScore: home?["score"] as? String ?? "0", homeSeed: hR?["current"] as? Int, homeLogo: hT?["logo"] as? String, homeColor: hT?["color"] as? String, state: state, detail: sType["detail"] as? String, shortDetail: sType["shortDetail"] as? String, period: status["period"] as? Int ?? 0, displayClock: status["displayClock"] as? String, startDate: nil, roundName: parts.last?.trimmingCharacters(in: .whitespaces), regionName: region, broadcast: nil, isUpset: false)
+        var round: String? = parts.last?.trimmingCharacters(in: .whitespaces)
+        if parts.count >= 2 {
+            region = parts[parts.count - 2].trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: " Region", with: "")
+        }
+        // If no headline, try to infer from season type
+        if round == nil {
+            let season = event["season"] as? [String: Any]
+            let slug = season?["slug"] as? String ?? ""
+            if slug.contains("post") { round = "Tournament" }
+        }
+        return SharedGame(id: id, awayTeam: aT?["displayName"] as? String ?? "TBD", awayAbbreviation: aT?["abbreviation"] as? String ?? "TBD", awayScore: away?["score"] as? String ?? "0", awaySeed: aR?["current"] as? Int, awayLogo: aT?["logo"] as? String, awayColor: aT?["color"] as? String, homeTeam: hT?["displayName"] as? String ?? "TBD", homeAbbreviation: hT?["abbreviation"] as? String ?? "TBD", homeScore: home?["score"] as? String ?? "0", homeSeed: hR?["current"] as? Int, homeLogo: hT?["logo"] as? String, homeColor: hT?["color"] as? String, state: state, detail: sType["detail"] as? String, shortDetail: sType["shortDetail"] as? String, period: status["period"] as? Int ?? 0, displayClock: status["displayClock"] as? String, startDate: nil, roundName: round, regionName: region, broadcast: nil, isUpset: false)
     }
 }
 
@@ -64,6 +85,9 @@ struct BracketEntry: TimelineEntry {
     var regions: [String] {
         var seen = Set<String>()
         return games.compactMap { $0.regionName }.filter { seen.insert($0).inserted }
+    }
+    func gamesFor(region: String) -> [SharedGame] {
+        games.filter { $0.regionName == region }
     }
     func roundsFor(region: String) -> [[SharedGame]] {
         let order = ["1st Round", "2nd Round", "Sweet 16", "Elite 8"]
@@ -88,7 +112,7 @@ struct BracketWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Tournament Bracket")
-        .description("Visual bracket tree — left, right & center like the real thing")
+        .description("Live NCAA bracket with all 4 regions, scores & matchup lines")
         .supportedFamilies([.systemLarge, .systemExtraLarge])
     }
 }
@@ -106,7 +130,7 @@ struct BracketWidgetView: View {
             case .systemExtraLarge:
                 fullBracket
             default:
-                halfBracket
+                fourRegionCompact
             }
         }
         .padding(6)
@@ -115,8 +139,11 @@ struct BracketWidgetView: View {
     private var header: some View {
         HStack(spacing: 4) {
             Image(systemName: "trophy.fill").font(.system(size: 9)).foregroundStyle(.yellow)
-            Text("NCAA Tournament").font(.system(size: 10, weight: .bold))
+            Text("NCAA Tournament").font(.system(size: 10, weight: .bold)).foregroundColor(.white)
             Spacer()
+            Text(entry.date, style: .time)
+                .font(.system(size: 7))
+                .foregroundColor(.white.opacity(0.4))
             if !entry.liveGames.isEmpty {
                 HStack(spacing: 2) {
                     Circle().fill(.red).frame(width: 4, height: 4)
@@ -127,33 +154,122 @@ struct BracketWidgetView: View {
         .padding(.bottom, 3)
     }
 
-    // MARK: - Large: Left Region → Center (FF/Champ) ← Right Region
+    // MARK: - Large: 2×2 grid of all 4 regions
 
-    private var halfBracket: some View {
+    private var fourRegionCompact: some View {
         let r = entry.regions
-        return HStack(spacing: 0) {
-            // Left region bracket (reads left → right)
-            if r.count >= 1 {
-                leftRegion(r[0])
+        return VStack(spacing: 4) {
+            // Top row: regions 0 & 1
+            HStack(spacing: 4) {
+                if r.count >= 1 { miniRegion(r[0]) }
+                if r.count >= 2 { miniRegion(r[1]) }
             }
+            .frame(maxHeight: .infinity)
 
-            // Center: Final Four + Trophy + Championship
-            centerColumn
+            // Bottom row: regions 2 & 3
+            HStack(spacing: 4) {
+                if r.count >= 3 { miniRegion(r[2]) }
+                if r.count >= 4 { miniRegion(r[3]) }
+            }
+            .frame(maxHeight: .infinity)
 
-            // Right region bracket (reads right → left, mirrored)
-            if r.count >= 2 {
-                rightRegion(r[1])
+            // If we have no regions, just show all games as a flat list
+            if r.isEmpty {
+                flatGameList
             }
         }
-        .frame(maxHeight: .infinity)
     }
 
-    // MARK: - Extra Large: Full bracket — top half and bottom half
+    // MARK: - Mini Region (for large widget 2x2 grid)
+
+    private func miniRegion(_ region: String) -> some View {
+        let regionGames = entry.gamesFor(region: region)
+
+        return VStack(spacing: 1) {
+            // Region name
+            Text(region.uppercased())
+                .font(.system(size: 7, weight: .heavy))
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Show games as matchup boxes stacked
+            ForEach(regionGames) { game in
+                miniMatchupRow(game)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(3)
+        .background(RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.04)))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func miniMatchupRow(_ game: SharedGame) -> some View {
+        HStack(spacing: 2) {
+            // Away team
+            if let s = game.awaySeed {
+                Text("\(s)").font(.system(size: 5, weight: .medium, design: .monospaced)).foregroundColor(.white.opacity(0.4)).frame(width: 7, alignment: .trailing)
+            }
+            Text(game.awayAbbreviation)
+                .font(.system(size: 6, weight: aLeads(game) ? .bold : .regular))
+                .foregroundColor(aLeads(game) ? .white : .white.opacity(0.6))
+                .lineLimit(1)
+
+            if game.isLive || game.isFinal {
+                Text(game.awayScore)
+                    .font(.system(size: 6, weight: .bold, design: .monospaced))
+                    .foregroundColor(game.isLive ? .red : (aLeads(game) ? .white : .white.opacity(0.35)))
+            }
+
+            // Separator
+            Text("-").font(.system(size: 5)).foregroundColor(.white.opacity(0.2))
+
+            // Home team
+            if game.isLive || game.isFinal {
+                Text(game.homeScore)
+                    .font(.system(size: 6, weight: .bold, design: .monospaced))
+                    .foregroundColor(game.isLive ? .red : (hLeads(game) ? .white : .white.opacity(0.35)))
+            }
+
+            Text(game.homeAbbreviation)
+                .font(.system(size: 6, weight: hLeads(game) ? .bold : .regular))
+                .foregroundColor(hLeads(game) ? .white : .white.opacity(0.6))
+                .lineLimit(1)
+            if let s = game.homeSeed {
+                Text("\(s)").font(.system(size: 5, weight: .medium, design: .monospaced)).foregroundColor(.white.opacity(0.4)).frame(width: 7, alignment: .leading)
+            }
+
+            Spacer(minLength: 0)
+
+            // Status indicator
+            if game.isLive {
+                Circle().fill(.red).frame(width: 3, height: 3)
+            }
+        }
+        .padding(.horizontal, 2)
+        .padding(.vertical, 1)
+        .background(
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(game.isLive ? Color.red.opacity(0.08) : Color.black.opacity(0.3))
+        )
+    }
+
+    // MARK: - Flat game list fallback
+
+    private var flatGameList: some View {
+        VStack(spacing: 2) {
+            ForEach(entry.games) { game in
+                miniMatchupRow(game)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    // MARK: - Extra Large: Full bracket — left, right, center with lines
 
     private var fullBracket: some View {
         let r = entry.regions
         return VStack(spacing: 2) {
-            // Top half
+            // Top half: Region 0 (left) → Final Four ← Region 1 (right)
             HStack(spacing: 0) {
                 if r.count >= 1 { leftRegion(r[0]) }
                 topCenterColumn
@@ -161,20 +277,19 @@ struct BracketWidgetView: View {
             }
             .frame(maxHeight: .infinity)
 
-            // Center trophy
+            // Center trophy + Championship
             HStack {
                 Spacer()
                 Image(systemName: "trophy.fill").font(.system(size: 14)).foregroundStyle(.yellow)
                 if let champ = entry.championshipGame {
-                    matchupBox(champ)
-                        .frame(width: 80)
+                    matchupBox(champ).frame(width: 80)
                 }
                 Image(systemName: "trophy.fill").font(.system(size: 14)).foregroundStyle(.yellow)
                 Spacer()
             }
             .padding(.vertical, 2)
 
-            // Bottom half
+            // Bottom half: Region 2 (left) → Final Four ← Region 3 (right)
             HStack(spacing: 0) {
                 if r.count >= 3 { leftRegion(r[2]) }
                 bottomCenterColumn
@@ -184,7 +299,7 @@ struct BracketWidgetView: View {
         }
     }
 
-    // MARK: - Left Region (normal direction: early rounds → later rounds)
+    // MARK: - Left Region (early rounds → later rounds, left to right)
 
     private func leftRegion(_ region: String) -> some View {
         let rounds = entry.roundsFor(region: region)
@@ -220,20 +335,6 @@ struct BracketWidgetView: View {
 
     // MARK: - Center Columns
 
-    private var centerColumn: some View {
-        VStack(spacing: 4) {
-            Spacer()
-            let ff = entry.finalFourGames
-            ForEach(ff) { g in matchupBox(g).frame(width: 65) }
-            Image(systemName: "trophy.fill").font(.system(size: 12)).foregroundStyle(.yellow)
-            if let champ = entry.championshipGame {
-                matchupBox(champ).frame(width: 65)
-            }
-            Spacer()
-        }
-        .frame(width: 70)
-    }
-
     private var topCenterColumn: some View {
         VStack(spacing: 2) {
             Spacer()
@@ -258,9 +359,9 @@ struct BracketWidgetView: View {
 
     private var tbdSlot: some View {
         RoundedRectangle(cornerRadius: 2)
-            .stroke(Color.secondary.opacity(0.15), lineWidth: 0.5)
+            .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
             .frame(width: 60, height: 16)
-            .overlay(Text("TBD").font(.system(size: 6)).foregroundStyle(.tertiary))
+            .overlay(Text("TBD").font(.system(size: 6)).foregroundColor(.white.opacity(0.3)))
     }
 
     // MARK: - Round Column
@@ -280,7 +381,7 @@ struct BracketWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Connectors (left side: coming from the right edge of matchups)
+    // MARK: - Connectors
 
     private func connectors(count: Int, roundIdx: Int) -> some View {
         let pairs = count / 2
@@ -291,11 +392,8 @@ struct BracketWidgetView: View {
         case 2: sp = 42
         default: sp = 2
         }
-
         return VStack(spacing: sp + 14) {
-            ForEach(0..<max(pairs, 1), id: \.self) { _ in
-                connector(direction: .right)
-            }
+            ForEach(0..<max(pairs, 1), id: \.self) { _ in connector(direction: .right) }
         }
         .frame(maxHeight: .infinity)
         .frame(width: 8)
@@ -310,11 +408,8 @@ struct BracketWidgetView: View {
         case 2: sp = 42
         default: sp = 2
         }
-
         return VStack(spacing: sp + 14) {
-            ForEach(0..<max(pairs, 1), id: \.self) { _ in
-                connector(direction: .left)
-            }
+            ForEach(0..<max(pairs, 1), id: \.self) { _ in connector(direction: .left) }
         }
         .frame(maxHeight: .infinity)
         .frame(width: 8)
@@ -323,43 +418,24 @@ struct BracketWidgetView: View {
     enum ConnectorDir { case left, right }
 
     private func connector(direction: ConnectorDir) -> some View {
-        // Draws ┐     or     ┌
-        //       ├──   or  ──┤
-        //       ┘     or     └
         let lineColor = Color.white.opacity(0.3)
         let lineW: CGFloat = 0.5
-
         return HStack(spacing: 0) {
             if direction == .left {
-                // Horizontal out to the left
                 Rectangle().fill(lineColor).frame(width: 3, height: lineW)
             }
-
-            // Vertical bar with top/bottom hooks
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    if direction == .right {
-                        Spacer(minLength: 0)
-                        Rectangle().fill(lineColor).frame(width: 3, height: lineW)
-                    } else {
-                        Rectangle().fill(lineColor).frame(width: 3, height: lineW)
-                        Spacer(minLength: 0)
-                    }
+                    if direction == .right { Spacer(minLength: 0); Rectangle().fill(lineColor).frame(width: 3, height: lineW) }
+                    else { Rectangle().fill(lineColor).frame(width: 3, height: lineW); Spacer(minLength: 0) }
                 }
                 Rectangle().fill(lineColor).frame(width: lineW, height: 12)
                 HStack(spacing: 0) {
-                    if direction == .right {
-                        Spacer(minLength: 0)
-                        Rectangle().fill(lineColor).frame(width: 3, height: lineW)
-                    } else {
-                        Rectangle().fill(lineColor).frame(width: 3, height: lineW)
-                        Spacer(minLength: 0)
-                    }
+                    if direction == .right { Spacer(minLength: 0); Rectangle().fill(lineColor).frame(width: 3, height: lineW) }
+                    else { Rectangle().fill(lineColor).frame(width: 3, height: lineW); Spacer(minLength: 0) }
                 }
             }
-
             if direction == .right {
-                // Horizontal out to the right
                 Rectangle().fill(lineColor).frame(width: 3, height: lineW)
             }
         }
@@ -375,18 +451,18 @@ struct BracketWidgetView: View {
             .padding(.bottom, 1)
     }
 
-    // MARK: - Matchup Box
+    // MARK: - Matchup Box (for extra large bracket)
 
     private func matchupBox(_ game: SharedGame) -> some View {
         VStack(spacing: 0) {
             teamLine(seed: game.awaySeed, abbr: game.awayAbbreviation, score: game.awayScore,
                      winning: aLeads(game), live: game.isLive, done: game.isFinal)
-            Rectangle().fill(game.isLive ? Color.red.opacity(0.5) : Color.secondary.opacity(0.15)).frame(height: 0.5)
+            Rectangle().fill(game.isLive ? Color.red.opacity(0.5) : Color.white.opacity(0.1)).frame(height: 0.5)
             teamLine(seed: game.homeSeed, abbr: game.homeAbbreviation, score: game.homeScore,
                      winning: hLeads(game), live: game.isLive, done: game.isFinal)
         }
         .background(RoundedRectangle(cornerRadius: 2).fill(Color.black.opacity(0.5)))
-        .overlay(RoundedRectangle(cornerRadius: 2).stroke(game.isLive ? Color.red.opacity(0.6) : Color.secondary.opacity(0.12), lineWidth: game.isLive ? 1 : 0.5))
+        .overlay(RoundedRectangle(cornerRadius: 2).stroke(game.isLive ? Color.red.opacity(0.6) : Color.white.opacity(0.08), lineWidth: game.isLive ? 1 : 0.5))
     }
 
     private func teamLine(seed: Int?, abbr: String, score: String, winning: Bool, live: Bool, done: Bool) -> some View {
@@ -424,7 +500,9 @@ private let sampleBracketGames: [SharedGame] = [
     // South
     SharedGame(id: "s9", awayTeam: "Nebraska", awayAbbreviation: "NEB", awayScore: "76", awaySeed: 4, awayLogo: nil, awayColor: nil, homeTeam: "Troy", homeAbbreviation: "TROY", homeScore: "47", homeSeed: 13, homeLogo: nil, homeColor: nil, state: "post", detail: "Final", shortDetail: "Final", period: 2, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "South", broadcast: nil, isUpset: false),
     SharedGame(id: "s10", awayTeam: "Vanderbilt", awayAbbreviation: "VAN", awayScore: "78", awaySeed: 5, awayLogo: nil, awayColor: nil, homeTeam: "McNeese", homeAbbreviation: "MCN", homeScore: "68", homeSeed: 12, homeLogo: nil, homeColor: nil, state: "post", detail: "Final", shortDetail: "Final", period: 2, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "South", broadcast: nil, isUpset: false),
+    SharedGame(id: "s11", awayTeam: "VCU", awayAbbreviation: "VCU", awayScore: "82", awaySeed: 11, awayLogo: nil, awayColor: nil, homeTeam: "UNC", homeAbbreviation: "UNC", homeScore: "78", homeSeed: 6, homeLogo: nil, homeColor: nil, state: "post", detail: "Final", shortDetail: "Final", period: 2, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "South", broadcast: nil, isUpset: true),
+    SharedGame(id: "s12", awayTeam: "Texas A&M", awayAbbreviation: "TA&M", awayScore: "63", awaySeed: 10, awayLogo: nil, awayColor: nil, homeTeam: "Saint Mary's", homeAbbreviation: "SMC", homeScore: "50", homeSeed: 7, homeLogo: nil, homeColor: nil, state: "post", detail: "Final", shortDetail: "Final", period: 2, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "South", broadcast: nil, isUpset: true),
     // Midwest
-    SharedGame(id: "s11", awayTeam: "Michigan", awayAbbreviation: "MICH", awayScore: "101", awaySeed: 1, awayLogo: nil, awayColor: nil, homeTeam: "Howard", homeAbbreviation: "HOW", homeScore: "80", homeSeed: 16, homeLogo: nil, homeColor: nil, state: "post", detail: "Final", shortDetail: "Final", period: 2, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "Midwest", broadcast: nil, isUpset: false),
-    SharedGame(id: "s12", awayTeam: "Georgia", awayAbbreviation: "UGA", awayScore: "0", awaySeed: 8, awayLogo: nil, awayColor: nil, homeTeam: "Saint Louis", homeAbbreviation: "SLU", homeScore: "0", homeSeed: 9, homeLogo: nil, homeColor: nil, state: "pre", detail: "9:40 PM", shortDetail: "9:40", period: 0, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "Midwest", broadcast: nil, isUpset: false),
+    SharedGame(id: "s13", awayTeam: "Michigan", awayAbbreviation: "MICH", awayScore: "101", awaySeed: 1, awayLogo: nil, awayColor: nil, homeTeam: "Howard", homeAbbreviation: "HOW", homeScore: "80", homeSeed: 16, homeLogo: nil, homeColor: nil, state: "post", detail: "Final", shortDetail: "Final", period: 2, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "Midwest", broadcast: nil, isUpset: false),
+    SharedGame(id: "s14", awayTeam: "Georgia", awayAbbreviation: "UGA", awayScore: "0", awaySeed: 8, awayLogo: nil, awayColor: nil, homeTeam: "Saint Louis", homeAbbreviation: "SLU", homeScore: "0", homeSeed: 9, homeLogo: nil, homeColor: nil, state: "pre", detail: "9:40 PM", shortDetail: "9:40", period: 0, displayClock: nil, startDate: nil, roundName: "1st Round", regionName: "Midwest", broadcast: nil, isUpset: false),
 ]

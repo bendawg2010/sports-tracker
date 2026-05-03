@@ -49,7 +49,7 @@ It's free because it costs nothing to run — no servers, no accounts, no analyt
 ## How to support
 
 - **⭐ Star the repo** — costs you nothing, makes my day.
-- **💸 Donate** — there's a tip jar inside the app's preferences. Pay-what-you-want, totally optional.
+- **💸 Donate** — Cash App [`$Dryeetsolutions`](https://cash.app/$Dryeetsolutions), or use the in-app "Support open source" button. Pay-what-you-want, totally optional.
 - **🐛 File issues** — bug reports and feature requests are gold.
 - **📣 Tell a friend** — word of mouth is everything for indie apps.
 

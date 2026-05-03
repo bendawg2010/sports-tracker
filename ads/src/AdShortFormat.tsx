@@ -1,8 +1,10 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Sequence,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
   interpolate,
@@ -304,6 +306,8 @@ const ShortCta: React.FC = () => {
 export const AdShortFormat: React.FC = () => {
   return (
     <AbsoluteFill style={{ background: BG }}>
+      {/* 15-second sport-anthem cut (reveal + carousel + fade) */}
+      <Audio src={staticFile("sports-anthem-15s.mp3")} volume={0.85} />
       <Sequence from={0} durationInFrames={90}>
         <ShortHook />
       </Sequence>

@@ -1,6 +1,6 @@
+*.log
+*.tsbuildinfo
+.DS_Store
+.remotion/
 node_modules/
 out/
-.remotion/
-*.log
-.DS_Store
-*.tsbuildinfo

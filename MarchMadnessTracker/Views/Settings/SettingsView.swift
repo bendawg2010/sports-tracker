@@ -178,19 +178,20 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 HStack(spacing: 10) {
-                    Link(destination: URL(string: "https://www.paypal.com/donate?hosted_button_id=PLACEHOLDER")!) {
+                    Link(destination: URL(string: "https://cash.app/$Dryeetsolutions")!) {
                         HStack(spacing: 6) {
-                            Image(systemName: "heart.fill")
+                            Image(systemName: "dollarsign.circle.fill")
                             Text("Support open source")
                                 .font(.system(size: 13, weight: .bold))
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .background(Color.pink.opacity(0.15))
+                        .background(Color.green.opacity(0.18))
                         .clipShape(Capsule())
-                        .foregroundStyle(Color.pink)
+                        .foregroundStyle(Color.green)
                     }
                     .buttonStyle(.plain)
+                    .help("Cash App: $Dryeetsolutions")
                     .onHover { inside in
                         inside ? NSCursor.pointingHand.push() : NSCursor.pop()
                     }

@@ -1,8 +1,10 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Sequence,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
   interpolate,
@@ -850,6 +852,9 @@ const SceneCta: React.FC = () => {
 export const AdSportsTracker: React.FC = () => {
   return (
     <AbsoluteFill style={{ background: BG, fontFamily: FONT_STACK }}>
+      {/* Sport-anthem soundtrack — synthesized arena hype track timed to
+          the storyboard cuts. Place sports-anthem.mp3 in `public/`. */}
+      <Audio src={staticFile("sports-anthem.mp3")} volume={0.85} />
       {/* 0-3s Hook */}
       <Sequence from={0} durationInFrames={90}>
         <SceneHook />

@@ -439,31 +439,590 @@ const LiveDrawingPanel: React.FC<{
 };
 
 const SceneLiveDrawings: React.FC = () => {
-  // 5 seconds = 150 frames. Three panels of ~50 frames each.
+  // 5 seconds = 150 frames. Two quick field flashes then drop into a full
+  // desktop showcase with the app actually working live on a Mac.
   return (
     <>
       <LiveDrawingPanel
         sport="football"
         overlayText="1ST & GOAL"
         startFrame={0}
-        durationFrames={50}
+        durationFrames={36}
         showDriveArrow
       />
       <LiveDrawingPanel
         sport="basketball"
         overlayText="DUKE 78  UNC 75"
-        startFrame={50}
-        durationFrames={50}
+        startFrame={36}
+        durationFrames={36}
         showShots
       />
-      <LiveDrawingPanel
-        sport="baseball"
-        overlayText="BASES LOADED"
-        startFrame={100}
-        durationFrames={50}
-        showRunners
-      />
+      {/* Full Mac desktop, menu bar ticker scrolling, popover open with
+          live-updating game rows, two pinned widgets in the corners */}
+      <Sequence from={72} durationInFrames={78}>
+        <SceneDesktopShowcase />
+      </Sequence>
     </>
+  );
+};
+
+/* ---------- Scene 5b: Desktop Showcase — the app actually working ---------- */
+const SceneDesktopShowcase: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  // Easing for whole-scene entry
+  const enter = spring({
+    frame,
+    fps,
+    config: { damping: 16, stiffness: 70, mass: 0.8 },
+  });
+
+  // Score animation: each game's away/home score ticks upward over time
+  // Duke = 78 → 81, UNC = 75 → 75, LAL = 102 → 105, BOS = 99 → 99
+  const dukeScore =
+    frame < 30 ? 78 : frame < 50 ? 79 : frame < 65 ? 81 : 81;
+  const lalScore =
+    frame < 20 ? 102 : frame < 40 ? 104 : frame < 60 ? 105 : 105;
+  const arsScore = frame < 45 ? 2 : 3; // soccer goal at ~45f
+
+  // Score flash effect — bright pulse when a score changes
+  const scoreFlash = (changeFrame: number) => {
+    const d = frame - changeFrame;
+    if (d < 0 || d > 18) return 0;
+    return Math.sin((d / 18) * Math.PI) * 0.7;
+  };
+
+  // Ticker scroll position
+  const tickerOffset = (frame * 8) % 1400;
+
+  return (
+    <AbsoluteFill
+      style={{
+        // Faux macOS "Big Sur" wallpaper gradient
+        background:
+          "linear-gradient(135deg, #1a2a4a 0%, #2a1a3a 35%, #4a1a2a 100%)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Subtle wallpaper noise/glow */}
+      <AbsoluteFill style={{ opacity: 0.4 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: -200,
+            left: -200,
+            width: 700,
+            height: 700,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(255,184,28,0.15), transparent 70%)",
+            filter: "blur(60px)",
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            bottom: -300,
+            right: -300,
+            width: 800,
+            height: 800,
+            borderRadius: "50%",
+            background:
+              "radial-gradient(circle, rgba(255,69,58,0.12), transparent 70%)",
+            filter: "blur(80px)",
+          }}
+        />
+      </AbsoluteFill>
+
+      {/* ============= MENU BAR (top of screen, scrolling ticker) ============= */}
+      <div
+        style={{
+          position: "absolute",
+          top: 60,
+          left: 60,
+          right: 60,
+          height: 88,
+          background: "rgba(20,20,28,0.92)",
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          backdropFilter: "blur(40px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          display: "flex",
+          alignItems: "center",
+          padding: "0 24px",
+          fontFamily: FONT_STACK,
+          color: "white",
+          gap: 24,
+          opacity: enter,
+        }}
+      >
+        {/* Apple logo */}
+        <div style={{ fontSize: 22 }}>{"\u{F8FF}"}</div>
+        <div style={{ fontWeight: 600, fontSize: 18 }}>Finder</div>
+        <div style={{ flex: 1, overflow: "hidden", marginRight: 24 }}>
+          {/* Ticker scrolling fast */}
+          <div
+            style={{
+              transform: `translateX(${-tickerOffset}px)`,
+              whiteSpace: "nowrap",
+              fontSize: 22,
+              fontWeight: 600,
+              display: "inline-flex",
+              gap: 60,
+            }}
+          >
+            <span>
+              <span style={{ color: "#FF453A" }}>●</span> DUKE{" "}
+              <b
+                style={{
+                  color: "#FFB81C",
+                  filter: `brightness(${1 + scoreFlash(30)})`,
+                }}
+              >
+                {dukeScore}
+              </b>{" "}
+              · UNC <b>75</b> · 2H 4:32
+            </span>
+            <span>
+              <span style={{ color: "#FF453A" }}>●</span> LAL{" "}
+              <b
+                style={{
+                  color: "#FFB81C",
+                  filter: `brightness(${1 + scoreFlash(20)})`,
+                }}
+              >
+                {lalScore}
+              </b>{" "}
+              · BOS <b>99</b> · Q4 1:15
+            </span>
+            <span style={{ opacity: 0.6 }}>NYY 4 · BOS 3 · Top 5th</span>
+            <span>
+              <span style={{ color: "#FF453A" }}>●</span> ARS{" "}
+              <b
+                style={{
+                  color: "#FFB81C",
+                  filter: `brightness(${1 + scoreFlash(45)})`,
+                }}
+              >
+                {arsScore}
+              </b>{" "}
+              · MCI <b>2</b> · 87'
+            </span>
+            <span style={{ opacity: 0.6 }}>VER P1 · Lap 38/57</span>
+            <span>
+              <span style={{ color: "#FF453A" }}>●</span> DUKE{" "}
+              <b style={{ color: "#FFB81C" }}>{dukeScore}</b> · UNC <b>75</b>
+            </span>
+          </div>
+        </div>
+        {/* Trophy + LIVE badge */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "6px 12px",
+            borderRadius: 8,
+            background: "rgba(255,184,28,0.15)",
+          }}
+        >
+          <TrophyIcon size={28} color={GOLD} />
+          <span style={{ color: "#FF453A", fontWeight: 800, fontSize: 16 }}>
+            4 LIVE
+          </span>
+        </div>
+        <div style={{ fontSize: 18, opacity: 0.7 }}>
+          {(() => {
+            const sec = Math.floor(frame / 30);
+            return `7:${String(20 + sec).padStart(2, "0")} PM`;
+          })()}
+        </div>
+      </div>
+
+      {/* ============= POPOVER (attached to menu bar, opens with spring) ============= */}
+      <div
+        style={{
+          position: "absolute",
+          top: 160,
+          left: "50%",
+          transform: `translateX(-50%) scale(${0.9 + enter * 0.1}) translateY(${(1 - enter) * -20}px)`,
+          width: 760,
+          background: "rgba(15,15,20,0.96)",
+          borderRadius: 22,
+          padding: 28,
+          backdropFilter: "blur(40px)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+          color: "white",
+          fontFamily: FONT_STACK,
+          opacity: enter,
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 20,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <TrophyIcon size={36} color={GOLD} />
+            <div style={{ fontSize: 32, fontWeight: 800 }}>Sports Tracker</div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              color: "#FF453A",
+              fontWeight: 800,
+              fontSize: 18,
+            }}
+          >
+            <span
+              style={{
+                width: 14,
+                height: 14,
+                borderRadius: "50%",
+                background: "#FF453A",
+                display: "inline-block",
+                opacity: 0.6 + 0.4 * Math.sin(frame * 0.4),
+              }}
+            />
+            4 LIVE
+          </div>
+        </div>
+
+        {/* Game rows — three with animated scores */}
+        {[
+          {
+            away: "DUKE",
+            home: "UNC",
+            awayColor: "#003087",
+            homeColor: "#7BAFD4",
+            awayScore: dukeScore,
+            homeScore: 75,
+            status: "2H · 4:32",
+            wp: "DUKE 62%",
+            flashOn: 30,
+          },
+          {
+            away: "LAL",
+            home: "BOS",
+            awayColor: "#552583",
+            homeColor: "#007A33",
+            awayScore: lalScore,
+            homeScore: 99,
+            status: "Q4 · 1:15",
+            wp: "LAL 78%",
+            flashOn: 20,
+          },
+          {
+            away: "ARS",
+            home: "MCI",
+            awayColor: "#EF0107",
+            homeColor: "#6CABDD",
+            awayScore: arsScore,
+            homeScore: 2,
+            status: "87'",
+            wp: "DRAW",
+            flashOn: 45,
+          },
+        ].map((g) => {
+          const flash = scoreFlash(g.flashOn);
+          return (
+            <div
+              key={g.away}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "auto 1fr auto auto",
+                gap: 18,
+                alignItems: "center",
+                padding: "14px 16px",
+                borderRadius: 14,
+                background: `rgba(255,184,28,${flash * 0.25})`,
+                marginBottom: 10,
+                transition: "background 0.1s",
+              }}
+            >
+              <div style={{ display: "flex", gap: 8 }}>
+                <span
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 6,
+                    background: g.awayColor,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: 14,
+                  }}
+                >
+                  {g.away.slice(0, 1)}
+                </span>
+                <span
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 6,
+                    background: g.homeColor,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    color: "#13294B",
+                  }}
+                >
+                  {g.home.slice(0, 1)}
+                </span>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>
+                {g.away} <span style={{ opacity: 0.5 }}>vs</span> {g.home}
+              </div>
+              <div
+                style={{
+                  fontSize: 30,
+                  fontWeight: 900,
+                  fontFamily: "SF Mono, monospace",
+                  color: flash > 0.05 ? GOLD : "white",
+                  filter: `brightness(${1 + flash * 0.6})`,
+                }}
+              >
+                {g.awayScore}–{g.homeScore}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-end",
+                  gap: 2,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 14,
+                    color: "#FF453A",
+                    fontWeight: 700,
+                  }}
+                >
+                  {g.status}
+                </span>
+                <span style={{ fontSize: 12, color: GOLD, fontWeight: 700 }}>
+                  {g.wp}
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ============= PINNED FLOATING WIDGETS in corners ============= */}
+      {/* Bottom-left: Duke vs UNC widget */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 80,
+          left: 80,
+          width: 320,
+          background: "rgba(15,15,20,0.9)",
+          borderRadius: 22,
+          padding: 18,
+          backdropFilter: "blur(30px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          color: "white",
+          fontFamily: FONT_STACK,
+          transform: `translateY(${(1 - enter) * 40}px) scale(${0.85 + enter * 0.15})`,
+          opacity: enter,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,184,28,0.05)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 12,
+          }}
+        >
+          <span
+            style={{
+              color: "#FF453A",
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#FF453A",
+                opacity: 0.6 + 0.4 * Math.sin(frame * 0.4),
+              }}
+            />
+            LIVE
+          </span>
+          <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
+            2H · 4:32
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            gap: 16,
+            alignItems: "center",
+          }}
+        >
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>DUKE</div>
+            <div
+              style={{
+                fontSize: 56,
+                fontWeight: 900,
+                color: scoreFlash(30) > 0.05 ? GOLD : "white",
+                filter: `brightness(${1 + scoreFlash(30) * 0.8})`,
+                fontFamily: "SF Mono, monospace",
+              }}
+            >
+              {dukeScore}
+            </div>
+          </div>
+          <div style={{ fontSize: 18, opacity: 0.4 }}>VS</div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>UNC</div>
+            <div
+              style={{
+                fontSize: 56,
+                fontWeight: 900,
+                color: "rgba(255,255,255,0.7)",
+                fontFamily: "SF Mono, monospace",
+              }}
+            >
+              75
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom-right: LAL vs BOS widget */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 80,
+          right: 80,
+          width: 320,
+          background: "rgba(15,15,20,0.9)",
+          borderRadius: 22,
+          padding: 18,
+          backdropFilter: "blur(30px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          color: "white",
+          fontFamily: FONT_STACK,
+          transform: `translateY(${(1 - enter) * 60}px) scale(${0.85 + enter * 0.15})`,
+          opacity: enter,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            marginBottom: 12,
+          }}
+        >
+          <span
+            style={{
+              color: "#FF453A",
+              fontSize: 12,
+              fontWeight: 800,
+              letterSpacing: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+            }}
+          >
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#FF453A",
+                opacity: 0.6 + 0.4 * Math.sin(frame * 0.4 + 1),
+              }}
+            />
+            LIVE
+          </span>
+          <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
+            Q4 · 1:15
+          </span>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr auto 1fr",
+            gap: 16,
+            alignItems: "center",
+          }}
+        >
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>LAL</div>
+            <div
+              style={{
+                fontSize: 56,
+                fontWeight: 900,
+                color: scoreFlash(20) > 0.05 ? GOLD : "white",
+                filter: `brightness(${1 + scoreFlash(20) * 0.8})`,
+                fontFamily: "SF Mono, monospace",
+              }}
+            >
+              {lalScore}
+            </div>
+          </div>
+          <div style={{ fontSize: 18, opacity: 0.4 }}>VS</div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>BOS</div>
+            <div
+              style={{
+                fontSize: 56,
+                fontWeight: 900,
+                color: "rgba(255,255,255,0.7)",
+                fontFamily: "SF Mono, monospace",
+              }}
+            >
+              99
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Caption strip at very bottom */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 18,
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          color: "rgba(255,255,255,0.85)",
+          fontFamily: FONT_STACK,
+          fontSize: 22,
+          fontWeight: 700,
+          letterSpacing: 0.5,
+          opacity: enter,
+        }}
+      >
+        Live. Right where you work.
+      </div>
+    </AbsoluteFill>
   );
 };
 

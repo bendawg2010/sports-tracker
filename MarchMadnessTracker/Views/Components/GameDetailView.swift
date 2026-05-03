@@ -85,13 +85,13 @@ struct GameDetailView: View {
                 VStack(spacing: 2) {
                     if event.isLive || event.isFinal {
                         HStack(spacing: 8) {
-                            Text(event.awayCompetitor?.score ?? "0")
+                            Text(event.awayCompetitor?.safeScore ?? "0")
                                 .font(.system(size: 32, weight: .heavy, design: .rounded))
                                 .foregroundStyle(isWinner(event.awayCompetitor) ? .primary : .secondary)
                             Text("-")
                                 .font(.system(size: 24, weight: .medium))
                                 .foregroundStyle(.tertiary)
-                            Text(event.homeCompetitor?.score ?? "0")
+                            Text(event.homeCompetitor?.safeScore ?? "0")
                                 .font(.system(size: 32, weight: .heavy, design: .rounded))
                                 .foregroundStyle(isWinner(event.homeCompetitor) ? .primary : .secondary)
                         }

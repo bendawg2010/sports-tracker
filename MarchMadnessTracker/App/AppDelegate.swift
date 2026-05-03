@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import WidgetKit
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -10,10 +11,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var gameDetailWindows: [String: NSWindow] = [:]
     private var watchWindows: [String: NSWindow] = [:]
     private var multiviewWindow: NSWindow?
-    let poller = ScorePoller()
+    let manager = SportPollerManager()
     let notificationService = NotificationService()
     private var wasAutoHidden = false
     private var tickerSizeObserver: NSKeyValueObservation?
+
+    /// Convenience: the first active poller (for legacy single-poller views)
+    var primaryPoller: ScorePoller? {
+        manager.pollers.values.first
+    }
 
     var isToolbarVisible: Bool {
         toolbarWindow?.isVisible ?? false
@@ -24,10 +30,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupPopover()
         setupNotifications()
         setupViewNotifications()
-        poller.startPolling()
+
+        manager.syncWithSettings()
+
+        // Start live tennis point scoring service (noop when no API key set)
+        TennisLiveService.shared.startPolling()
+
+        // DO NOT force reloadAllTimelines() on every launch — it starves the
+        // widget extension budget when 13 widgets all fetch from ESPN at once.
+        // ScorePoller already calls reloadAllTimelines() after each data
+        // refresh, which is the right moment for widgets to update.
 
         observeScoreUpdates()
         observeTickerSizeChanges()
+        observeSportsChanges()
 
         if UserDefaults.standard.bool(forKey: "toolbarEnabled") {
             showToolbar()
@@ -35,7 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        poller.stopPolling()
+        manager.stopAll()
         toolbarWindow?.close()
         widgetWindows.values.forEach { $0.close() }
         settingsWindow?.close()
@@ -48,7 +64,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "basketball.fill", accessibilityDescription: "March Madness")
+            button.image = NSImage(systemSymbolName: "trophy.fill", accessibilityDescription: "Sports Tracker")
             button.image?.size = NSSize(width: 18, height: 18)
             button.action = #selector(togglePopover)
             button.target = self
@@ -64,18 +80,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = true
         popover.contentViewController = NSHostingController(
             rootView: PopoverContentView(
-                poller: poller,
+                manager: manager,
                 onToggleToolbar: { [weak self] in self?.toggleToolbar() },
                 onOpenSettings: { [weak self] in self?.openSettings() }
             )
         )
     }
 
+    private func rebuildPopover() {
+        popover.contentViewController = NSHostingController(
+            rootView: PopoverContentView(
+                manager: manager,
+                onToggleToolbar: { [weak self] in self?.toggleToolbar() },
+                onOpenSettings: { [weak self] in self?.openSettings() }
+            )
+        )
+    }
+
+    // MARK: - Sports Changes
+
+    private func observeSportsChanges() {
+        NotificationCenter.default.addObserver(
+            forName: .sportsSelectionChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.rebuildToolbarIfNeeded()
+        }
+    }
+
+    private func rebuildToolbarIfNeeded() {
+        guard isToolbarVisible else { return }
+        toolbarWindow?.close()
+        toolbarWindow = nil
+        showToolbar()
+    }
+
     // MARK: - Toolbar Window
 
     func showToolbar() {
         if toolbarWindow == nil {
-            toolbarWindow = ToolbarWindow(poller: poller, onClose: { [weak self] in
+            toolbarWindow = ToolbarWindow(manager: manager, onClose: { [weak self] in
                 self?.hideToolbar()
             }, onDetachGame: { [weak self] event in
                 self?.createWidget(for: event)
@@ -97,33 +142,33 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             showToolbar()
         }
-        popover.contentViewController = NSHostingController(
-            rootView: PopoverContentView(
-                poller: poller,
-                onToggleToolbar: { [weak self] in self?.toggleToolbar() },
-                onOpenSettings: { [weak self] in self?.openSettings() }
-            )
-        )
+        rebuildPopover()
     }
 
     // MARK: - Score Widgets
 
     func createWidget(for event: Event) {
         guard widgetWindows[event.id] == nil else {
-            // Already exists, bring to front
             widgetWindows[event.id]?.orderFront(nil)
             return
         }
 
-        // Position: cascade from top-right of screen
         let screen = NSScreen.main ?? NSScreen.screens.first!
         let widgetCount = CGFloat(widgetWindows.count)
         let x = screen.frame.width - 300 - (widgetCount * 20)
         let y = screen.frame.height - 200 - (widgetCount * 30)
 
+        // Find the poller that owns this event
+        let poller = manager.pollers.values.first { p in
+            p.games.contains { $0.id == event.id }
+        } ?? primaryPoller
+
+        guard let poller else { return }
+
         let widget = ScoreWidgetWindow(
             eventId: event.id,
             poller: poller,
+            manager: manager,
             position: NSPoint(x: x, y: y),
             onClose: { [weak self] in
                 self?.widgetWindows.removeValue(forKey: event.id)
@@ -143,13 +188,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 720),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "March Madness Settings"
-        window.contentViewController = NSHostingController(rootView: SettingsView())
+        window.title = "Sports Tracker Settings"
+        window.contentViewController = NSHostingController(rootView: SettingsView(manager: manager))
         window.center()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -159,7 +204,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Game Detail Window
 
     func openGameDetail(for event: Event) {
-        // If already open, bring to front
         if let existing = gameDetailWindows[event.id], existing.isVisible {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -194,9 +238,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let eventId = notification.userInfo?["eventId"] as? String,
-                  let event = self?.poller.games.first(where: { $0.id == eventId }) else { return }
-            self?.openGameDetail(for: event)
+            guard let eventId = notification.userInfo?["eventId"] as? String else { return }
+            let event = self?.findEvent(id: eventId)
+            if let event { self?.openGameDetail(for: event) }
         }
 
         NotificationCenter.default.addObserver(
@@ -204,12 +248,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            guard let eventId = notification.userInfo?["eventId"] as? String,
-                  let event = self?.poller.games.first(where: { $0.id == eventId }) else { return }
-            self?.createWidget(for: event)
+            guard let eventId = notification.userInfo?["eventId"] as? String else { return }
+            let event = self?.findEvent(id: eventId)
+            if let event { self?.createWidget(for: event) }
         }
 
-        // Watch notifications
         NotificationCenter.default.addObserver(
             forName: .openWatchPortal,
             object: nil,
@@ -224,8 +267,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             queue: .main
         ) { [weak self] notification in
             guard let eventId = notification.userInfo?["eventId"] as? String,
-                  let event = self?.poller.games.first(where: { $0.id == eventId }) else { return }
-            self?.openWatchGame(event)
+                  let sportId = notification.userInfo?["sportId"] as? String else { return }
+            let event = self?.findEvent(id: eventId)
+            let sport = SportLeague.find(sportId)
+            if let event { self?.openWatchGame(event, sport: sport) }
         }
 
         NotificationCenter.default.addObserver(
@@ -237,15 +282,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Find an event across all pollers
+    private func findEvent(id: String) -> Event? {
+        for poller in manager.pollers.values {
+            if let event = poller.games.first(where: { $0.id == id }) {
+                return event
+            }
+        }
+        return nil
+    }
+
     // MARK: - Watch
 
     private func openWatchPortal() {
-        let url = URL(string: "https://www.ncaa.com/march-madness-live/watch")!
-        let window = WatchGameWindow(url: url, title: "🏀 March Madness Live")
+        let url = URL(string: "https://www.espn.com/watch/")!
+        let window = WatchGameWindow(url: url, title: "ESPN Watch")
         watchWindows["portal"] = window
     }
 
-    private func openWatchGame(_ event: Event) {
+    private func openWatchGame(_ event: Event, sport: SportLeague? = nil) {
         if let existing = watchWindows[event.id], existing.isVisible {
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
@@ -254,9 +309,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let away = event.awayCompetitor?.team.abbreviation ?? "Away"
         let home = event.homeCompetitor?.team.abbreviation ?? "Home"
-        // ESPN game page — loads specific game with live stats, play-by-play, and video
-        let url = URL(string: "https://www.espn.com/mens-college-basketball/game/_/gameId/\(event.id)")!
-        let window = WatchGameWindow(url: url, title: "🏀 \(away) vs \(home)")
+        let segment = sport?.espnWebSegment ?? "sports"
+        let url = URL(string: "https://www.espn.com/\(segment)/game/_/gameId/\(event.id)")!
+        let window = WatchGameWindow(url: url, title: "\(away) vs \(home)")
         watchWindows[event.id] = window
     }
 
@@ -267,11 +322,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        let liveGames = poller.games.filter { $0.isLive }
-        if liveGames.isEmpty { return }
+        // Get all live games across all sports
+        let allLive = manager.pollers.values.flatMap(\.liveGames)
+        if allLive.isEmpty { return }
 
-        // Rank games by excitement: close score, upsets, later rounds
-        let ranked = liveGames.sorted { a, b in
+        let ranked = allLive.sorted { a, b in
             gameExcitementScore(a) > gameExcitementScore(b)
         }
         let gamesToShow = Array(ranked.prefix(4))
@@ -279,8 +334,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let streams: [(url: URL, title: String)] = gamesToShow.compactMap { game in
             let away = game.awayCompetitor?.team.abbreviation ?? "Away"
             let home = game.homeCompetitor?.team.abbreviation ?? "Home"
-            // ESPN game page — each tile loads the specific game with live content
-            let url = URL(string: "https://www.espn.com/mens-college-basketball/game/_/gameId/\(game.id)")!
+            // Find sport for this game
+            let sport = manager.pollers.values.first { p in
+                p.games.contains { $0.id == game.id }
+            }?.sportLeague
+            let segment = sport?.espnWebSegment ?? "sports"
+            let url = URL(string: "https://www.espn.com/\(segment)/game/_/gameId/\(game.id)")!
             return (url: url, title: "\(away) vs \(home)")
         }
 
@@ -288,16 +347,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         multiviewWindow = window
     }
 
-    /// Score how exciting a game is — higher = better game to watch
     private func gameExcitementScore(_ game: Event) -> Int {
         var score = 0
-
-        // Close games are more exciting (lower point diff = higher score)
         if let diff = game.scoreDifference {
-            score += max(0, 20 - diff) * 3 // 0-pt game = 60, 5-pt game = 45, 20+ = 0
+            score += max(0, 20 - diff) * 3
         }
-
-        // Upsets are exciting (lower seed winning)
         if let awaySeed = game.awayCompetitor?.seed,
            let homeSeed = game.homeCompetitor?.seed,
            let awayScore = game.awayCompetitor?.scoreInt,
@@ -305,35 +359,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let seedDiff = abs(awaySeed - homeSeed)
             if (awaySeed > homeSeed && awayScore > homeScore) ||
                (homeSeed > awaySeed && homeScore > awayScore) {
-                score += seedDiff * 4 // Big upset = big bonus
+                score += seedDiff * 4
             }
         }
-
-        // Later rounds are more important
-        let round = game.roundName ?? ""
-        switch round {
-        case _ where round.contains("Championship"): score += 50
-        case _ where round.contains("Final Four"):    score += 40
-        case _ where round.contains("Elite"):         score += 30
-        case _ where round.contains("Sweet"):         score += 20
-        case _ where round.contains("2nd"):           score += 10
-        default:                                       score += 5
-        }
-
-        // Later in the game = more exciting (2nd half, OT)
-        if game.status.period >= 3 { // OT
-            score += 25
-        } else if game.status.period == 2 { // 2nd half
-            score += 10
-        }
-
+        if game.status.period >= 3 { score += 25 }
+        else if game.status.period == 2 { score += 10 }
         return score
     }
 
     // MARK: - Ticker Size
 
     private func observeTickerSizeChanges() {
-        // Watch for ticker size preference changes
         NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification,
             object: nil,
@@ -363,18 +399,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateToolbarAutoHide() {
         let toolbarEnabled = UserDefaults.standard.bool(forKey: "toolbarEnabled")
-        let hasActiveGames = !poller.tickerGames.isEmpty
+        let hasActiveGames = !manager.allTickerGames.isEmpty
 
         if toolbarEnabled || wasAutoHidden {
             if hasActiveGames && !isToolbarVisible {
-                if toolbarWindow == nil {
-                    toolbarWindow = ToolbarWindow(poller: poller, onClose: { [weak self] in
-                        self?.hideToolbar()
-                    }, onDetachGame: { [weak self] event in
-                        self?.createWidget(for: event)
-                    })
-                }
-                toolbarWindow?.orderFront(nil)
+                showToolbar()
                 wasAutoHidden = false
             } else if !hasActiveGames && isToolbarVisible {
                 toolbarWindow?.orderOut(nil)
@@ -399,37 +428,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Updates
 
     private func observeScoreUpdates() {
-        Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+        // 15s is enough for notifications; score flashes still fire per-poll.
+        // With 22 sports a 3s timer was iterating hundreds of events every tick.
+        Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.updateMenuBarTitle()
-            self.notificationService.checkForCloseGames(events: self.poller.games)
-            self.notificationService.checkForUpsets(events: self.poller.games)
+            let allGames = self.manager.pollers.values.flatMap(\.games)
+            self.notificationService.checkForCloseGames(events: allGames)
+            self.notificationService.checkForUpsets(events: allGames)
+            self.notificationService.checkForHalftimeUpsets(events: allGames)
             self.updateToolbarAutoHide()
+            self.updateMenuBarIcon()
+        }
+    }
+
+    private func updateMenuBarIcon() {
+        guard let button = statusItem.button else { return }
+        // Show sport-specific icon if there's a live game
+        if let livePoller = manager.pollers.values.first(where: { $0.hasLiveGames }) {
+            let iconName = livePoller.sportLeague.icon
+            button.image = NSImage(systemSymbolName: iconName, accessibilityDescription: livePoller.sportLeague.shortName)
+            button.image?.size = NSSize(width: 18, height: 18)
+        } else {
+            button.image = NSImage(systemSymbolName: "trophy.fill", accessibilityDescription: "Sports Tracker")
+            button.image?.size = NSSize(width: 18, height: 18)
         }
     }
 
     private func updateMenuBarTitle() {
         guard let favoriteTeamId = UserDefaults.standard.string(forKey: "favoriteTeamId"),
               !favoriteTeamId.isEmpty,
-              let game = poller.gameForTeam(teamId: favoriteTeamId),
               let button = statusItem.button else {
             statusItem.button?.title = ""
             return
         }
 
-        if game.isLive {
-            let away = game.awayCompetitor
-            let home = game.homeCompetitor
-            button.title = " \(away?.team.abbreviation ?? "") \(away?.score ?? "0")-\(home?.score ?? "0") \(home?.team.abbreviation ?? "")"
-        } else if game.isScheduled {
-            if let date = game.startDate {
-                button.title = " \(DateFormatters.timeOnly.string(from: date))"
-            } else {
-                button.title = ""
+        // Search across all pollers for the favorite team
+        for poller in manager.pollers.values {
+            if let game = poller.gameForTeam(teamId: favoriteTeamId) {
+                if game.isLive {
+                    let away = game.awayCompetitor
+                    let home = game.homeCompetitor
+                    button.title = " \(away?.team.abbreviation ?? "") \(away?.safeScore ?? "0")-\(home?.safeScore ?? "0") \(home?.team.abbreviation ?? "")"
+                } else if game.isScheduled, let date = game.startDate {
+                    button.title = " \(DateFormatters.timeOnly.string(from: date))"
+                } else {
+                    button.title = ""
+                }
+                return
             }
-        } else {
-            button.title = ""
         }
+        button.title = ""
     }
 
     // MARK: - Actions

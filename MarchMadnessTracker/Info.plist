@@ -2,7 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDisplayName</key>
+	<string>Sports Tracker</string>
+	<key>CFBundleName</key>
+	<string>Sports Tracker</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
 	<key>LSUIElement</key>
+	<true/>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Sports Tracker uses Apple Events to open game streams in your default browser.</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 Sports Tracker. Data from ESPN. Not affiliated with any league.</string>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
 	<true/>
 </dict>
 </plist>

@@ -1,0 +1,51 @@
+/* ===== Non-critical styles, loaded async ===== */
+/* Sport-card hover halo, parallax floating animation, and small refinements */
+
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+.sport-card {
+  animation: floatY 8s ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sport-card { animation: none; }
+}
+
+.sport-card:nth-child(1) { --delay: 0s; }
+.sport-card:nth-child(2) { --delay: -1s; }
+.sport-card:nth-child(3) { --delay: -2s; }
+.sport-card:nth-child(4) { --delay: -3s; }
+.sport-card:nth-child(5) { --delay: -4s; }
+.sport-card:nth-child(6) { --delay: -5s; }
+.sport-card:nth-child(7) { --delay: -6s; }
+.sport-card:nth-child(8) { --delay: -7s; }
+.sport-card:nth-child(9) { --delay: -1.5s; }
+
+/* Hover-only ticker pause, easier on the eye */
+.mockup:hover .mockup-ticker { animation-play-state: paused; }
+
+/* details summary marker reset */
+details > summary { list-style: none; cursor: pointer; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::marker { display: none; }
+
+/* Subtle glass border on banner-actions star count for theme parity */
+[data-theme="light"] .stars-badge { background: rgba(0,0,0,0.03); }
+[data-theme="light"] .pill { background: #FFFFFF; }
+[data-theme="light"] .pill:hover { color: #B07A00; background: rgba(255,184,28,0.18); }
+[data-theme="light"] .feature { background: #FFFFFF; }
+[data-theme="light"] .sport-card { background: #FFFFFF; }
+[data-theme="light"] .sport-card svg { filter: invert(1) hue-rotate(180deg) brightness(0.85); }
+[data-theme="light"] .mockup-poster { background: #1a1108; }
+[data-theme="light"] .faq-item { background: #FFFFFF; }
+[data-theme="light"] .modal { background: #FFFFFF; }
+[data-theme="light"] .nav-cta { box-shadow: 0 8px 24px rgba(255,184,28,0.25); }
+
+/* Print: keep things sane */
+@media print {
+  .nav, .footer, .mockup-ticker-wrap { display: none; }
+  body { background: #fff; color: #000; }
+}

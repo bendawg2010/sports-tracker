@@ -6,7 +6,7 @@ struct MarchMadnessTrackerApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView()
+            SettingsView(manager: appDelegate.manager)
         }
     }
 }

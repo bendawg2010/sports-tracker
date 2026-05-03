@@ -3,11 +3,12 @@ import SwiftUI
 /// Tab inside the popover for watching games via embedded web browser
 struct WatchView: View {
     var poller: ScorePoller
+    var sportLeague: SportLeague? = nil
 
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                // March Madness Live button (main portal)
+                // ESPN Live button (main portal)
                 Button {
                     NotificationCenter.default.post(
                         name: .openWatchPortal,
@@ -19,7 +20,7 @@ struct WatchView: View {
                             .font(.title2)
                             .foregroundStyle(.orange)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("March Madness Live")
+                            Text("ESPN Live")
                                 .font(.system(size: 14, weight: .bold))
                             Text("Watch all games — sign in with your TV provider")
                                 .font(.caption)
@@ -99,7 +100,7 @@ struct WatchView: View {
                         Text("No games right now")
                             .font(.headline)
                             .foregroundStyle(.secondary)
-                        Text("Open March Madness Live to browse all content")
+                        Text("Open ESPN Live to browse all content")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                     }
@@ -177,7 +178,7 @@ struct WatchView: View {
                             .font(.system(size: 12, weight: .semibold))
 
                         if game.isLive || game.isFinal {
-                            Text(game.awayCompetitor?.score ?? "0")
+                            Text(game.awayCompetitor?.safeScore ?? "0")
                                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                         }
 
@@ -186,7 +187,7 @@ struct WatchView: View {
                             .foregroundStyle(.tertiary)
 
                         if game.isLive || game.isFinal {
-                            Text(game.homeCompetitor?.score ?? "0")
+                            Text(game.homeCompetitor?.safeScore ?? "0")
                                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                         }
 

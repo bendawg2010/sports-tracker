@@ -29,11 +29,12 @@ struct TeamLogoView: View {
     }
 
     private var fallbackIcon: some View {
-        Image(systemName: "basketball.fill")
+        // Generic circle-person so it doesn't look basketball-specific
+        Image(systemName: "person.circle.fill")
             .resizable()
             .aspectRatio(contentMode: .fit)
-            .frame(width: size * 0.8, height: size * 0.8)
-            .foregroundStyle(.secondary)
+            .frame(width: size * 0.85, height: size * 0.85)
+            .foregroundStyle(.secondary.opacity(0.6))
             .frame(width: size, height: size)
     }
 }

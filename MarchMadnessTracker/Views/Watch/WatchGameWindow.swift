@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import WebKit
 
-/// A standalone window that embeds the NCAA March Madness Live or ESPN watch page
+/// A standalone window that embeds the ESPN watch page
 class WatchGameWindow: NSWindow {
     init(url: URL, title windowTitle: String) {
         super.init(

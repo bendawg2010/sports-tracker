@@ -1,0 +1,26 @@
+{
+  "name": "sports-tracker-ads",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Remotion project for Sports Tracker promotional video ads",
+  "scripts": {
+    "start": "remotion studio",
+    "build": "remotion render AdSportsTracker out/sports-tracker-ad.mp4",
+    "build:short": "remotion render AdShortFormat out/sports-tracker-ad-15s.mp4",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.380",
+    "@remotion/cli": "4.0.380",
+    "@remotion/renderer": "4.0.380",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.380"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "@types/react-dom": "19.0.0",
+    "typescript": "5.7.3"
+  }
+}

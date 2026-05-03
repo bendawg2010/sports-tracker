@@ -5,7 +5,7 @@ import SwiftUI
 class ToolbarWindow: NSPanel {
     var onClose: (() -> Void)?
 
-    init(poller: ScorePoller, onClose: @escaping () -> Void, onDetachGame: ((Event) -> Void)? = nil) {
+    init(manager: SportPollerManager, onClose: @escaping () -> Void, onDetachGame: ((Event) -> Void)? = nil) {
         let screenWidth = NSScreen.main?.frame.width ?? 1440
         let tickerSize = UserDefaults.standard.double(forKey: "tickerSize")
         let toolbarHeight: CGFloat = tickerSize > 0 ? tickerSize : Constants.toolbarHeight
@@ -24,7 +24,12 @@ class ToolbarWindow: NSPanel {
         self.hidesOnDeactivate = false
         self.hasShadow = true
         self.isMovableByWindowBackground = true
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        self.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .stationary,
+            .ignoresCycle
+        ]
         self.backgroundColor = .clear
         self.isOpaque = false
 
@@ -36,7 +41,7 @@ class ToolbarWindow: NSPanel {
         }
 
         let hostingView = NSHostingView(
-            rootView: ToolbarTickerView(poller: poller, onClose: { [weak self] in
+            rootView: ToolbarTickerView(manager: manager, onClose: { [weak self] in
                 self?.onClose?()
             }, onDetachGame: { event in
                 onDetachGame?(event)

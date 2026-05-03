@@ -5,181 +5,282 @@ import SwiftUI
 
 struct LiveScoreProvider: TimelineProvider {
     func placeholder(in context: Context) -> ScoreEntry {
-        ScoreEntry(date: Date(), games: sampleGames, logoCache: [:])
+        ScoreEntry(date: Date(), games: sampleGames)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ScoreEntry) -> Void) {
-        if context.isPreview {
-            completion(ScoreEntry(date: Date(), games: sampleGames, logoCache: [:])); return
-        }
-        Task {
-            let games = await fetchLiveScores()
-            let logos = await downloadLogos(for: games)
-            completion(ScoreEntry(date: Date(), games: games, logoCache: logos))
+        let acc = GameAccumulator()
+        fetchGames(into: acc) { games in
+            completion(ScoreEntry(date: Date(), games: games.isEmpty ? sampleGames : games))
         }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ScoreEntry>) -> Void) {
-        Task {
-            let games = await fetchLiveScores()
+        // Shared accumulator: ship whatever we have at the deadline OR when
+        // every league fetch finishes — whichever happens first.
+        let accumulator = GameAccumulator()
+        let lock = NSLock()
+        var fired = false
+        func fire(games: [SharedGame]) {
+            lock.lock()
+            if fired { lock.unlock(); return }
+            fired = true
+            lock.unlock()
+            // Use sample data ONLY if we have absolutely nothing.
             let finalGames = games.isEmpty ? sampleGames : games
-            let logos = await downloadLogos(for: finalGames)
-            let entry = ScoreEntry(date: Date(), games: finalGames, logoCache: logos)
-            let hasLive = games.contains { $0.isLive }
-            let refreshDate = Calendar.current.date(byAdding: .minute, value: hasLive ? 1 : 5, to: Date())!
+            let entry = ScoreEntry(date: Date(), games: finalGames)
+            let hasLive = finalGames.contains { $0.isLive }
+            let refreshDate = Calendar.current.date(
+                byAdding: .minute,
+                value: hasLive ? 1 : 5,
+                to: Date()
+            )!
             completion(Timeline(entries: [entry], policy: .after(refreshDate)))
         }
-    }
 
-    /// Download all team logos and return as [url_string: Data]
-    private func downloadLogos(for games: [SharedGame]) async -> [String: Data] {
-        var cache: [String: Data] = [:]
-        var urls: Set<String> = []
-
-        for game in games {
-            if let u = game.awayLogo { urls.insert(u) }
-            if let u = game.homeLogo { urls.insert(u) }
+        // Hard deadline — ships partial results even if not all sports finished
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4.0) {
+            fire(games: accumulator.snapshot())
         }
 
-        await withTaskGroup(of: (String, Data?).self) { group in
-            for urlString in urls {
-                group.addTask {
-                    guard let url = URL(string: urlString) else { return (urlString, nil) }
-                    do {
-                        let (data, _) = try await URLSession.shared.data(from: url)
-                        return (urlString, data)
-                    } catch {
-                        return (urlString, nil)
+        fetchGames(into: accumulator) { games in
+            fire(games: games)
+        }
+    }
+
+    /// Fetch from ESPN API for all selected sports.
+    /// Writes results into the shared accumulator as they arrive so the
+    /// deadline-fire path can pick up partial data. Calls `completion` with
+    /// the full set once every league responds (or fails).
+    private func fetchGames(
+        into accumulator: GameAccumulator,
+        completion: @escaping ([SharedGame]) -> Void
+    ) {
+        let selectedIDs = UserDefaults.standard.array(forKey: "selectedSportIDs") as? [String]
+            ?? ["nba", "nfl", "mlb"]
+        let leagues = selectedIDs.compactMap { SportLeague.find($0) }
+
+        if leagues.isEmpty {
+            completion([])
+            return
+        }
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd"
+        dateFormatter.timeZone = TimeZone(identifier: "America/New_York")
+        let today = dateFormatter.string(from: Date())
+        let endDateStr = dateFormatter.string(from: Calendar.current.date(byAdding: .day, value: 3, to: Date())!)
+
+        let group = DispatchGroup()
+
+        for league in leagues {
+            group.enter()
+            var urlString = "\(league.scoreboardURL)?limit=50&dates=\(today)-\(endDateStr)"
+            if let groupID = league.groupID {
+                urlString += "&groups=\(groupID)"
+            }
+            guard let url = URL(string: urlString) else {
+                group.leave()
+                continue
+            }
+
+            // Tight timeout — under WidgetKit budget. Per-fetch failure is
+            // fine; other leagues' results still ship.
+            URLSession.shared.dataTask(with: URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 2.5)) { data, _, _ in
+                defer { group.leave() }
+                guard let data = data,
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let events = json["events"] as? [[String: Any]] else { return }
+
+                let games: [SharedGame] = events.compactMap { event in
+                    self.parseEvent(event)
+                }
+                // Make data visible to the deadline path immediately
+                accumulator.add(games)
+            }.resume()
+        }
+
+        group.notify(queue: .main) {
+            completion(accumulator.snapshot())
+        }
+    }
+}
+
+/// Thread-safe accumulator so the deadline path can grab partial results.
+final class GameAccumulator: @unchecked Sendable {
+    private var games: [SharedGame] = []
+    private let lock = NSLock()
+
+    func add(_ newGames: [SharedGame]) {
+        lock.lock(); defer { lock.unlock() }
+        games.append(contentsOf: newGames)
+    }
+
+    func snapshot() -> [SharedGame] {
+        lock.lock(); defer { lock.unlock() }
+        return games
+    }
+}
+
+extension LiveScoreProvider {
+    /// Parse a single ESPN event JSON into SharedGame
+    func parseEvent(_ event: [String: Any]) -> SharedGame? {
+            guard let id = event["id"] as? String,
+                  let dateStr = event["date"] as? String,
+                  let competitions = event["competitions"] as? [[String: Any]],
+                  let comp = competitions.first,
+                  let competitors = comp["competitors"] as? [[String: Any]],
+                  let statusDict = event["status"] as? [String: Any],
+                  let statusType = statusDict["type"] as? [String: Any],
+                  let state = statusType["state"] as? String else {
+                return nil
+            }
+
+                let detail = statusType["detail"] as? String
+                let shortDetail = statusType["shortDetail"] as? String
+                let period = statusDict["period"] as? Int ?? 0
+                let displayClock = statusDict["displayClock"] as? String
+
+                // Parse date
+                let startDate = parseDate(dateStr)
+
+                // Parse round/region from notes
+                var roundName: String?
+                var regionName: String?
+                if let notes = (event["notes"] as? [[String: Any]] ?? comp["notes"] as? [[String: Any]]),
+                   let headline = notes.first?["headline"] as? String {
+                    let parts = headline.components(separatedBy: " - ")
+                    roundName = parts.last?.trimmingCharacters(in: .whitespaces)
+                    if parts.count >= 2 {
+                        regionName = parts[parts.count - 2].trimmingCharacters(in: .whitespaces)
+                            .replacingOccurrences(of: " Region", with: "")
                     }
                 }
-            }
-            for await (urlString, data) in group {
-                if let data = data {
-                    cache[urlString] = data
+
+                // Parse broadcast
+                let broadcast = (comp["broadcasts"] as? [[String: Any]])?
+                    .first.flatMap { ($0["names"] as? [String])?.first }
+
+                // Parse competitors
+                let away = competitors.first { ($0["homeAway"] as? String) == "away" }
+                let home = competitors.first { ($0["homeAway"] as? String) == "home" }
+
+                func teamInfo(_ c: [String: Any]?) -> (name: String, abbr: String, score: String, seed: Int?, logo: String?, color: String?) {
+                    guard let c = c, let team = c["team"] as? [String: Any] else {
+                        return ("TBD", "TBD", "0", nil, nil, nil)
+                    }
+                    let name = team["displayName"] as? String ?? "TBD"
+                    let abbr = team["abbreviation"] as? String ?? "TBD"
+                    let score = c["score"] as? String ?? "0"
+                    let logo = team["logo"] as? String
+                    let color = team["color"] as? String
+                    let seed: Int?
+                    if let rank = c["curatedRank"] as? [String: Any], let current = rank["current"] as? Int, current <= 16 {
+                        seed = current
+                    } else {
+                        seed = nil
+                    }
+                    return (name, abbr, score, seed, logo, color)
                 }
-            }
-        }
 
-        return cache
-    }
+                let awayInfo = teamInfo(away)
+                let homeInfo = teamInfo(home)
 
-    private func fetchLiveScores() async -> [SharedGame] {
-        guard let url = URL(string: "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=100&limit=100") else {
-            return sampleGames
-        }
+                // Detect upset
+                let isUpset: Bool = {
+                    guard state == "post",
+                          let awaySeed = awayInfo.seed, let homeSeed = homeInfo.seed,
+                          let awayScore = Int(awayInfo.score), let homeScore = Int(homeInfo.score) else { return false }
+                    return (awaySeed > homeSeed && awayScore > homeScore) || (homeSeed > awaySeed && homeScore > awayScore)
+                }()
 
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let response = try JSONDecoder().decode(WidgetScoreboardResponse.self, from: data)
-            return response.events.map { event in
-                let away = event.competitions.first?.competitors.first { $0.homeAway == "away" }
-                let home = event.competitions.first?.competitors.first { $0.homeAway == "home" }
-                let headline = event.notes?.first?.headline
-                    ?? event.competitions.first?.notes?.first?.headline
-                let parts = headline?.components(separatedBy: " - ") ?? []
-                var regionStr: String? = nil
-                if parts.count >= 2 {
-                    let r = parts[parts.count - 2].trimmingCharacters(in: .whitespaces)
-                    regionStr = r.replacingOccurrences(of: " Region", with: "")
-                }
+                // Parse moneyline odds for win probability
+                let (winProbTeam, winProbValue): (String?, Double?) = {
+                    if let odds = (comp["odds"] as? [[String: Any]])?.first {
+                        // Try moneyline first
+                        if let ml = odds["moneyline"] as? [String: Any],
+                           let home = ml["home"] as? [String: Any],
+                           let close = home["close"] as? [String: Any],
+                           let oddsStr = close["odds"] as? String,
+                           let oddsNum = Double(oddsStr) {
+                            let homeProb: Double
+                            if oddsNum < 0 {
+                                homeProb = abs(oddsNum) / (abs(oddsNum) + 100.0)
+                            } else {
+                                homeProb = 100.0 / (oddsNum + 100.0)
+                            }
+                            let favTeam = homeProb >= 0.5 ? homeInfo.abbr : awayInfo.abbr
+                            let prob = min(0.97, max(homeProb, 1.0 - homeProb))
+                            return (favTeam, prob)
+                        }
+                        // Fall back to spread
+                        if let spread = odds["spread"] as? Double {
+                            let prob = 1.0 / (1.0 + exp(spread * 0.15))
+                            let favTeam = prob >= 0.5 ? homeInfo.abbr : awayInfo.abbr
+                            return (favTeam, min(0.97, max(prob, 1.0 - prob)))
+                        }
+                    }
+                    // Seed-based fallback
+                    if let aS = awayInfo.seed, let hS = homeInfo.seed, aS != hS {
+                        let rates: [Int: Double] = [1:0.99,2:0.94,3:0.85,4:0.79,5:0.64,6:0.63,7:0.61,8:0.50,
+                                                     9:0.50,10:0.39,11:0.37,12:0.36,13:0.21,14:0.15,15:0.06,16:0.01]
+                        let favAbbr = aS < hS ? awayInfo.abbr : homeInfo.abbr
+                        let favSeed = min(aS, hS)
+                        return (favAbbr, rates[favSeed] ?? 0.50)
+                    }
+                    return (nil, nil)
+                }()
 
                 return SharedGame(
-                    id: event.id,
-                    awayTeam: away?.team.displayName ?? "TBD",
-                    awayAbbreviation: away?.team.abbreviation ?? "TBD",
-                    awayScore: away?.score ?? "0",
-                    awaySeed: away?.curatedRank?.current,
-                    awayLogo: away?.team.logo,
-                    awayColor: away?.team.color,
-                    homeTeam: home?.team.displayName ?? "TBD",
-                    homeAbbreviation: home?.team.abbreviation ?? "TBD",
-                    homeScore: home?.score ?? "0",
-                    homeSeed: home?.curatedRank?.current,
-                    homeLogo: home?.team.logo,
-                    homeColor: home?.team.color,
-                    state: event.status.type.state,
-                    detail: event.status.type.detail,
-                    shortDetail: event.status.type.shortDetail,
-                    period: event.status.period,
-                    displayClock: event.status.displayClock,
-                    startDate: ISO8601DateFormatter().date(from: event.date),
-                    roundName: parts.last?.trimmingCharacters(in: .whitespaces),
-                    regionName: regionStr,
-                    broadcast: event.competitions.first?.broadcasts?.first?.names?.first,
-                    isUpset: {
-                        guard event.status.type.state != "pre",
-                              let away, let home,
-                              let aSeed = away.curatedRank?.current,
-                              let hSeed = home.curatedRank?.current,
-                              let aScore = Int(away.score ?? "0"),
-                              let hScore = Int(home.score ?? "0") else { return false }
-                        return (aSeed > hSeed && aScore > hScore) || (hSeed > aSeed && hScore > aScore)
-                    }()
+                    id: id,
+                    awayTeam: awayInfo.name,
+                    awayAbbreviation: awayInfo.abbr,
+                    awayScore: awayInfo.score.isEmpty ? "0" : awayInfo.score,
+                    awaySeed: awayInfo.seed,
+                    awayLogo: awayInfo.logo,
+                    awayColor: awayInfo.color,
+                    homeTeam: homeInfo.name,
+                    homeAbbreviation: homeInfo.abbr,
+                    homeScore: homeInfo.score.isEmpty ? "0" : homeInfo.score,
+                    homeSeed: homeInfo.seed,
+                    homeLogo: homeInfo.logo,
+                    homeColor: homeInfo.color,
+                    state: state,
+                    detail: detail,
+                    shortDetail: shortDetail,
+                    period: period,
+                    displayClock: displayClock,
+                    startDate: startDate,
+                    roundName: roundName,
+                    regionName: regionName,
+                    broadcast: broadcast,
+                    isUpset: isUpset,
+                    winProbTeam: winProbTeam,
+                    winProbValue: winProbValue
                 )
-            }
-        } catch {
-            return sampleGames
-        }
     }
-}
 
-// MARK: - Minimal Codable types for widget-side ESPN parsing
+    /// Parse ESPN date strings (handles missing seconds format like "2026-03-20T16:15Z")
+    private func parseDate(_ dateString: String) -> Date? {
+        let isoFrac = ISO8601DateFormatter()
+        isoFrac.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = isoFrac.date(from: dateString) { return d }
 
-private struct WidgetScoreboardResponse: Codable {
-    let events: [WidgetEvent]
-}
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: dateString) { return d }
 
-private struct WidgetEvent: Codable {
-    let id: String
-    let date: String
-    let competitions: [WidgetCompetition]
-    let status: WidgetStatus
-    let notes: [WidgetNote]?
-}
+        // ESPN sometimes omits seconds: "2026-03-20T16:15Z"
+        if dateString.hasSuffix("Z") && dateString.count <= 17 {
+            let withSeconds = dateString.replacingOccurrences(of: "Z", with: ":00Z")
+            if let d = iso.date(from: withSeconds) { return d }
+        }
 
-private struct WidgetCompetition: Codable {
-    let competitors: [WidgetCompetitor]
-    let broadcasts: [WidgetBroadcast]?
-    let notes: [WidgetNote]?
-}
-
-private struct WidgetCompetitor: Codable {
-    let homeAway: String
-    let team: WidgetTeam
-    let score: String?
-    let curatedRank: WidgetRank?
-}
-
-private struct WidgetTeam: Codable {
-    let id: String
-    let abbreviation: String
-    let displayName: String
-    let color: String?
-    let logo: String?
-}
-
-private struct WidgetRank: Codable {
-    let current: Int?
-}
-
-private struct WidgetStatus: Codable {
-    let displayClock: String?
-    let period: Int
-    let type: WidgetStatusType
-}
-
-private struct WidgetStatusType: Codable {
-    let state: String
-    let detail: String?
-    let shortDetail: String?
-}
-
-private struct WidgetNote: Codable {
-    let headline: String?
-}
-
-private struct WidgetBroadcast: Codable {
-    let names: [String]?
+        let fallback = DateFormatter()
+        fallback.dateFormat = "yyyy-MM-dd'T'HH:mmZ"
+        fallback.locale = Locale(identifier: "en_US_POSIX")
+        return fallback.date(from: dateString.replacingOccurrences(of: "Z", with: "+0000"))
+    }
 }
 
 // MARK: - Timeline Entry
@@ -187,37 +288,51 @@ private struct WidgetBroadcast: Codable {
 struct ScoreEntry: TimelineEntry {
     let date: Date
     let games: [SharedGame]
-    let logoCache: [String: Data]  // url -> image data
 
     var liveGames: [SharedGame] { games.filter { $0.isLive } }
-    var recentGames: [SharedGame] {
-        let live = liveGames
-        if !live.isEmpty { return live }
-        let finals = games.filter { $0.isFinal }
-        if !finals.isEmpty { return Array(finals.prefix(4)) }
-        return Array(games.prefix(4))
+
+    var upcomingGames: [SharedGame] {
+        games.filter { $0.isScheduled }
+            .sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
     }
 
-    func logoImage(for urlString: String?) -> NSImage? {
-        guard let urlString, let data = logoCache[urlString] else { return nil }
-        return NSImage(data: data)
+    var finalGames: [SharedGame] {
+        games.filter { $0.isFinal }
+            .sorted { ($0.startDate ?? .distantPast) > ($1.startDate ?? .distantPast) }
+    }
+
+    /// Priority: live > upcoming > recent finals
+    var displayGames: [SharedGame] {
+        var result: [SharedGame] = []
+        result.append(contentsOf: liveGames)
+        result.append(contentsOf: upcomingGames)
+        result.append(contentsOf: finalGames)
+        var seen = Set<String>()
+        return result.filter { seen.insert($0.id).inserted }
     }
 }
 
 // MARK: - Widget Definition
 
 struct LiveScoreWidget: Widget {
-    let kind: String = "LiveScoreWidget_v4"
+    let kind: String = "LiveScoreWidget_v11"
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: LiveScoreProvider()) { entry in
             LiveScoreWidgetView(entry: entry)
                 .containerBackground(for: .widget) {
-                    Color(white: 0.15)
+                    // Solid dark gradient — looks intentional in BOTH the
+                    // active and dimmed (other-app-focused) widget states.
+                    // `.fill.tertiary` desaturates to flat grey when dimmed.
+                    LinearGradient(
+                        colors: [Color(red: 0.06, green: 0.06, blue: 0.08),
+                                 Color(red: 0.10, green: 0.10, blue: 0.12)],
+                        startPoint: .top, endPoint: .bottom
+                    )
                 }
         }
-        .configurationDisplayName("March Madness Scores")
-        .description("Live NCAA Tournament scores with team logos")
+        .configurationDisplayName("Live Sports Scores")
+        .description("Live scores for every selected sport")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }
@@ -230,289 +345,228 @@ struct LiveScoreWidgetView: View {
 
     var body: some View {
         switch family {
-        case .systemSmall:
-            smallWidget
-        case .systemMedium:
-            mediumWidget
-        case .systemLarge:
-            largeWidget
-        default:
-            mediumWidget
+        case .systemSmall: smallWidget
+        case .systemMedium: mediumWidget
+        case .systemLarge: largeWidget
+        default: mediumWidget
         }
     }
 
-    // MARK: - Small Widget (single game)
+    // MARK: - Small
 
     private var smallWidget: some View {
-        VStack(spacing: 6) {
-            if let game = entry.recentGames.first {
+        VStack(spacing: 4) {
+            if let game = entry.displayGames.first {
                 HStack {
                     if game.isLive {
                         HStack(spacing: 3) {
-                            Circle().fill(.red).frame(width: 5, height: 5)
-                            Text("LIVE").font(.system(size: 8, weight: .heavy)).foregroundStyle(.red)
+                            Circle().fill(Color.red).frame(width: 5, height: 5)
+                            Text("LIVE").font(.system(size: 8, weight: .heavy)).foregroundColor(.red)
+                        }
+                    } else if game.isScheduled {
+                        HStack(spacing: 3) {
+                            Image(systemName: "clock.fill").font(.system(size: 7)).foregroundColor(.orange)
+                            Text("NEXT").font(.system(size: 8, weight: .heavy)).foregroundColor(.orange)
                         }
                     }
                     Spacer()
                     if let round = game.roundName {
-                        Text(round).font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+                        Text(round).font(.system(size: 8, weight: .medium)).foregroundColor(.gray).lineLimit(1)
                     }
                 }
-
                 Spacer()
-
                 HStack(spacing: 0) {
-                    // Away
-                    VStack(spacing: 3) {
-                        teamLogo(game.awayLogo, color: game.awayColor, size: 28)
-                        HStack(spacing: 2) {
-                            if let seed = game.awaySeed {
-                                Text("\(seed)").font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary)
-                            }
-                            Text(game.awayAbbreviation).font(.system(size: 11, weight: .semibold)).lineLimit(1)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    // Score
+                    teamBlock(game.awayAbbreviation, seed: game.awaySeed)
                     VStack(spacing: 2) {
                         if game.isLive || game.isFinal {
-                            HStack(spacing: 4) {
-                                Text(game.awayScore).font(.system(size: 22, weight: .bold, design: .rounded))
-                                Text("-").font(.system(size: 14)).foregroundStyle(.secondary)
-                                Text(game.homeScore).font(.system(size: 22, weight: .bold, design: .rounded))
-                            }
-                        }
-                        if game.isLive {
-                            Text(game.shortDetail ?? "Live").font(.system(size: 9, weight: .bold)).foregroundStyle(.red)
-                        } else if game.isFinal {
-                            Text("Final").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
-                        } else {
-                            Text(game.detail ?? "Upcoming").font(.system(size: 11, weight: .semibold))
-                        }
-                    }
-
-                    // Home
-                    VStack(spacing: 3) {
-                        teamLogo(game.homeLogo, color: game.homeColor, size: 28)
-                        HStack(spacing: 2) {
-                            Text(game.homeAbbreviation).font(.system(size: 11, weight: .semibold)).lineLimit(1)
-                            if let seed = game.homeSeed {
-                                Text("\(seed)").font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary)
+                            scoreText(game)
+                            statusLabel(game)
+                        } else if game.isScheduled {
+                            countdownBlock(game, large: true)
+                            if let wpText = game.winProbText {
+                                Text(wpText)
+                                    .font(.system(size: 9, weight: .bold, design: .rounded))
+                                    .foregroundColor(.blue)
                             }
                         }
                     }
-                    .frame(maxWidth: .infinity)
+                    teamBlock(game.homeAbbreviation, seed: game.homeSeed)
                 }
-
                 Spacer()
-
-                if game.isUpset {
-                    HStack(spacing: 2) {
-                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7))
-                        Text("UPSET").font(.system(size: 7, weight: .heavy))
-                    }
-                    .foregroundStyle(.orange)
-                }
-            } else {
-                emptyState
-            }
+            } else { emptyState }
         }
-        .padding(4)
+        .padding(8)
     }
 
-    // MARK: - Medium Widget
+    // MARK: - Medium
 
     private var mediumWidget: some View {
         VStack(spacing: 4) {
-            HStack {
-                Image(systemName: "basketball.fill").font(.system(size: 10)).foregroundStyle(.orange)
-                Text("March Madness").font(.system(size: 11, weight: .bold))
-                Spacer()
-                if entry.liveGames.count > 0 {
-                    HStack(spacing: 3) {
-                        Circle().fill(.red).frame(width: 5, height: 5)
-                        Text("\(entry.liveGames.count) LIVE").font(.system(size: 8, weight: .heavy)).foregroundStyle(.red)
-                    }
-                }
-            }
-
-            if entry.recentGames.isEmpty {
+            header
+            if entry.displayGames.isEmpty {
                 Spacer(); emptyState; Spacer()
             } else {
-                ForEach(Array(entry.recentGames.prefix(3))) { game in
-                    compactGameRow(game)
-                    if game.id != entry.recentGames.prefix(3).last?.id { Divider() }
+                let games = Array(entry.displayGames.prefix(3))
+                ForEach(games) { game in
+                    gameRow(game)
+                    if game.id != games.last?.id { Divider() }
                 }
             }
         }
-        .padding(4)
+        .padding(8)
     }
 
-    // MARK: - Large Widget
+    // MARK: - Large
 
     private var largeWidget: some View {
         VStack(spacing: 4) {
-            HStack {
-                Image(systemName: "basketball.fill").font(.system(size: 12)).foregroundStyle(.orange)
-                Text("March Madness").font(.system(size: 13, weight: .bold))
-                Spacer()
-                if entry.liveGames.count > 0 {
-                    HStack(spacing: 3) {
-                        Circle().fill(.red).frame(width: 6, height: 6)
-                        Text("\(entry.liveGames.count) LIVE").font(.system(size: 9, weight: .heavy)).foregroundStyle(.red)
-                    }
-                }
-            }
-            .padding(.bottom, 2)
-
-            if entry.recentGames.isEmpty {
+            header
+            if entry.displayGames.isEmpty {
                 Spacer(); emptyState; Spacer()
             } else {
-                ForEach(Array(entry.recentGames.prefix(6))) { game in
-                    expandedGameRow(game)
-                    if game.id != entry.recentGames.prefix(6).last?.id { Divider() }
+                let games = Array(entry.displayGames.prefix(6))
+                ForEach(games) { game in
+                    gameRow(game)
+                    if game.id != games.last?.id { Divider() }
                 }
                 Spacer(minLength: 0)
             }
         }
-        .padding(4)
+        .padding(8)
     }
 
-    // MARK: - Row Components
+    // MARK: - Components
 
-    private func compactGameRow(_ game: SharedGame) -> some View {
-        HStack(spacing: 6) {
-            if game.isLive { Circle().fill(.red).frame(width: 4, height: 4) }
-
-            teamLogo(game.awayLogo, color: game.awayColor, size: 16)
-            if let seed = game.awaySeed {
-                Text("\(seed)").font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary)
+    private var header: some View {
+        HStack {
+            Image(systemName: "trophy.fill").font(.system(size: 10)).foregroundColor(.orange)
+            Text("Sports Tracker").font(.system(size: 11, weight: .bold))
+            Spacer()
+            if entry.liveGames.count > 0 {
+                HStack(spacing: 3) {
+                    Circle().fill(Color.red).frame(width: 5, height: 5)
+                    Text("\(entry.liveGames.count) LIVE").font(.system(size: 8, weight: .heavy)).foregroundColor(.red)
+                }
+            } else if !entry.upcomingGames.isEmpty {
+                Text("UPCOMING").font(.system(size: 8, weight: .heavy)).foregroundColor(.orange)
             }
-            Text(game.awayAbbreviation).font(.system(size: 12, weight: .semibold)).lineLimit(1).frame(width: 36, alignment: .leading)
+        }
+    }
+
+    private func teamBlock(_ abbr: String, seed: Int?) -> some View {
+        VStack(spacing: 3) {
+            Image(systemName: "basketball.fill").font(.system(size: 20)).foregroundColor(.orange)
+            HStack(spacing: 2) {
+                if let seed { Text("\(seed)").font(.system(size: 8, weight: .medium)).foregroundColor(.gray) }
+                Text(abbr).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func scoreText(_ game: SharedGame) -> some View {
+        HStack(spacing: 4) {
+            Text(game.awayScore).font(.system(size: 22, weight: .bold, design: .rounded))
+            Text("-").font(.system(size: 14)).foregroundColor(.gray)
+            Text(game.homeScore).font(.system(size: 22, weight: .bold, design: .rounded))
+        }
+        .foregroundColor(game.isLive ? .red : nil)
+    }
+
+    private func statusLabel(_ game: SharedGame) -> some View {
+        Group {
+            if game.isLive {
+                Text(game.shortDetail ?? "Live").font(.system(size: 9, weight: .bold)).foregroundColor(.red)
+            } else {
+                Text("Final").font(.system(size: 9, weight: .semibold)).foregroundColor(.gray)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func countdownBlock(_ game: SharedGame, large: Bool) -> some View {
+        if let date = game.startDate {
+            let diff = date.timeIntervalSince(entry.date)
+            VStack(spacing: 1) {
+                if diff > 0 {
+                    let hours = Int(diff) / 3600
+                    let mins = (Int(diff) % 3600) / 60
+                    Text(hours > 0 ? "\(hours)h \(mins)m" : "\(mins)m")
+                        .font(.system(size: large ? 18 : 13, weight: .bold, design: .rounded))
+                        .foregroundColor(.orange)
+                    timeOfDay(date)
+                } else {
+                    Text("Starting...")
+                        .font(.system(size: large ? 14 : 11, weight: .semibold))
+                        .foregroundColor(.green)
+                }
+            }
+        } else {
+            Text(game.detail ?? "TBD").font(.system(size: 11, weight: .medium)).foregroundColor(.gray)
+        }
+    }
+
+    private func timeOfDay(_ date: Date) -> some View {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        f.timeZone = TimeZone(identifier: "America/New_York")
+        return Text(f.string(from: date))
+            .font(.system(size: 8, weight: .medium))
+            .foregroundColor(.gray)
+    }
+
+    private func gameRow(_ game: SharedGame) -> some View {
+        HStack(spacing: 6) {
+            if game.isLive {
+                Circle().fill(Color.red).frame(width: 4, height: 4)
+            } else if game.isScheduled {
+                Image(systemName: "clock.fill").font(.system(size: 7)).foregroundColor(.orange)
+            }
+
+            if let seed = game.awaySeed {
+                Text("\(seed)").font(.system(size: 8, weight: .medium)).foregroundColor(.gray)
+            }
+            Text(game.awayAbbreviation).font(.system(size: 12, weight: .semibold)).lineLimit(1).frame(width: 40, alignment: .leading)
 
             Spacer()
 
             if game.isLive || game.isFinal {
-                Text("\(game.awayScore) - \(game.homeScore)")
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .foregroundStyle(game.isLive ? .red : .primary)
-            } else {
-                Text(game.shortDetail ?? "—").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Text(game.homeAbbreviation).font(.system(size: 12, weight: .semibold)).lineLimit(1).frame(width: 36, alignment: .trailing)
-            if let seed = game.homeSeed {
-                Text("\(seed)").font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary)
-            }
-            teamLogo(game.homeLogo, color: game.homeColor, size: 16)
-
-            if game.isUpset {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 8)).foregroundStyle(.orange)
-            }
-        }
-        .padding(.vertical, 2)
-    }
-
-    private func expandedGameRow(_ game: SharedGame) -> some View {
-        HStack(spacing: 8) {
-            if game.isLive { Circle().fill(.red).frame(width: 5, height: 5) }
-
-            teamLogo(game.awayLogo, color: game.awayColor, size: 20)
-            VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 3) {
-                    if let seed = game.awaySeed {
-                        Text("(\(seed))").font(.system(size: 8)).foregroundStyle(.secondary)
-                    }
-                    Text(game.awayAbbreviation).font(.system(size: 12, weight: .semibold))
-                }
-            }
-
-            Spacer()
-
-            VStack(spacing: 1) {
-                if game.isLive || game.isFinal {
+                VStack(spacing: 1) {
                     Text("\(game.awayScore) - \(game.homeScore)")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                        .foregroundStyle(game.isLive ? .red : .primary)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .foregroundColor(game.isLive ? .red : nil)
+                    if game.isLive {
+                        Text(game.shortDetail ?? "Live").font(.system(size: 7, weight: .bold)).foregroundColor(.red)
+                    } else {
+                        Text("Final").font(.system(size: 7, weight: .semibold)).foregroundColor(.gray)
+                    }
                 }
-                if game.isLive {
-                    Text(game.shortDetail ?? "Live").font(.system(size: 8, weight: .bold)).foregroundStyle(.red)
-                } else if game.isFinal {
-                    Text("Final").font(.system(size: 8, weight: .semibold)).foregroundStyle(.secondary)
-                } else {
-                    Text(game.shortDetail ?? "—").font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary)
-                }
-            }
-            .frame(minWidth: 70)
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 0) {
-                HStack(spacing: 3) {
-                    Text(game.homeAbbreviation).font(.system(size: 12, weight: .semibold))
-                    if let seed = game.homeSeed {
-                        Text("(\(seed))").font(.system(size: 8)).foregroundStyle(.secondary)
+            } else if game.isScheduled {
+                VStack(spacing: 1) {
+                    countdownBlock(game, large: false)
+                    if let wpText = game.winProbText {
+                        Text(wpText)
+                            .font(.system(size: 8, weight: .bold, design: .rounded))
+                            .foregroundColor(.blue)
                     }
                 }
             }
-            teamLogo(game.homeLogo, color: game.homeColor, size: 20)
 
-            if game.isUpset {
-                HStack(spacing: 2) {
-                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 7))
-                    Text("!").font(.system(size: 7, weight: .heavy))
-                }
-                .foregroundStyle(.orange)
+            Spacer()
+
+            Text(game.homeAbbreviation).font(.system(size: 12, weight: .semibold)).lineLimit(1).frame(width: 40, alignment: .trailing)
+            if let seed = game.homeSeed {
+                Text("\(seed)").font(.system(size: 8, weight: .medium)).foregroundColor(.gray)
             }
         }
         .padding(.vertical, 2)
-    }
-
-    // MARK: - Team Logo (uses pre-downloaded image data)
-
-    private func teamLogo(_ urlString: String?, color: String?, size: CGFloat) -> some View {
-        ZStack {
-            if let hex = color {
-                Circle()
-                    .fill(Color(hex: hex)?.opacity(0.15) ?? Color.gray.opacity(0.15))
-                    .frame(width: size + 4, height: size + 4)
-            }
-            if let nsImage = entry.logoImage(for: urlString) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(width: size, height: size)
-            } else {
-                Image(systemName: "basketball.fill")
-                    .font(.system(size: size * 0.6))
-                    .foregroundStyle(.secondary)
-                    .frame(width: size, height: size)
-            }
-        }
     }
 
     private var emptyState: some View {
         VStack(spacing: 6) {
-            Image(systemName: "basketball").font(.title3).foregroundStyle(.secondary)
-            Text("No games right now").font(.caption).foregroundStyle(.secondary)
+            Image(systemName: "basketball").font(.title3).foregroundColor(.gray)
+            Text("No games right now").font(.caption).foregroundColor(.gray)
         }
-    }
-}
-
-// MARK: - Color hex extension for widget
-
-private extension Color {
-    init?(hex: String?) {
-        guard let hex = hex else { return nil }
-        let cleaned = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        guard cleaned.count == 6, let int = UInt64(cleaned, radix: 16) else { return nil }
-        let r = Double((int >> 16) & 0xFF) / 255.0
-        let g = Double((int >> 8) & 0xFF) / 255.0
-        let b = Double(int & 0xFF) / 255.0
-        self.init(red: r, green: g, blue: b)
     }
 }
 
@@ -527,16 +581,16 @@ let sampleGames: [SharedGame] = [
         state: "in", detail: "2nd Half - 4:32", shortDetail: "2nd 4:32",
         period: 2, displayClock: "4:32", startDate: Date(),
         roundName: "Sweet 16", regionName: "East", broadcast: "CBS",
-        isUpset: true
+        isUpset: true, winProbTeam: "DUKE", winProbValue: 0.62
     ),
     SharedGame(
-        id: "sample2", awayTeam: "Kansas", awayAbbreviation: "KU", awayScore: "65",
+        id: "sample2", awayTeam: "Kansas", awayAbbreviation: "KU", awayScore: "0",
         awaySeed: 1, awayLogo: nil, awayColor: "0051BA",
-        homeTeam: "Kentucky", homeAbbreviation: "UK", homeScore: "58",
+        homeTeam: "Kentucky", homeAbbreviation: "UK", homeScore: "0",
         homeSeed: 3, homeLogo: nil, homeColor: "0033A0",
-        state: "post", detail: "Final", shortDetail: "Final",
-        period: 2, displayClock: "0:00", startDate: Date().addingTimeInterval(-3600),
-        roundName: "2nd Round", regionName: "South", broadcast: "TNT",
-        isUpset: false
+        state: "pre", detail: "7:10 PM ET", shortDetail: "7:10 PM",
+        period: 0, displayClock: nil, startDate: Date().addingTimeInterval(3600),
+        roundName: "1st Round", regionName: "South", broadcast: "TNT",
+        isUpset: false, winProbTeam: "KU", winProbValue: 0.85
     ),
 ]

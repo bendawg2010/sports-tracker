@@ -16,7 +16,7 @@ class MultiviewWindow: NSWindow {
             defer: false
         )
 
-        self.title = "🏀 March Madness Multiview (\(urls.count) games)"
+        self.title = "Sports Multiview (\(urls.count) games)"
         self.minSize = NSSize(width: 800, height: 500)
         self.contentViewController = NSHostingController(
             rootView: MultiviewContentView(streams: urls)

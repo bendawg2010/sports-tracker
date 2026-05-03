@@ -2,7 +2,13 @@ import SwiftUI
 
 struct GameRowView: View {
     let event: Event
+    var scoreChanged: Bool = false
+    var scoringTeamId: String? = nil
     @State private var isHovered = false
+    @State private var flashOpacity: Double = 0
+    @State private var logoPopScale: CGFloat = 0
+    @State private var logoPopOpacity: Double = 0
+    @State private var scoringLogoURL: URL?
 
     private var awayColor: Color {
         Color(hex: event.awayCompetitor?.team.color) ?? .blue
@@ -32,14 +38,19 @@ struct GameRowView: View {
                     .padding(.vertical, 4)
 
                     VStack(spacing: 6) {
-                        teamRow(
-                            competitor: event.awayCompetitor,
-                            isWinner: event.isFinal && isWinner(event.awayCompetitor)
-                        )
-                        teamRow(
-                            competitor: event.homeCompetitor,
-                            isWinner: event.isFinal && isWinner(event.homeCompetitor)
-                        )
+                        if isTennisMatch {
+                            tennisRow(competitor: event.awayCompetitor)
+                            tennisRow(competitor: event.homeCompetitor)
+                        } else {
+                            teamRow(
+                                competitor: event.awayCompetitor,
+                                isWinner: event.isFinal && isWinner(event.awayCompetitor)
+                            )
+                            teamRow(
+                                competitor: event.homeCompetitor,
+                                isWinner: event.isFinal && isWinner(event.homeCompetitor)
+                            )
+                        }
 
                         // Status line
                         HStack(spacing: 4) {
@@ -99,8 +110,55 @@ struct GameRowView: View {
         .background(backgroundStyle)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .padding(.horizontal, 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.yellow.opacity(flashOpacity))
+                .allowsHitTesting(false)
+        )
+        .overlay {
+            // Logo pop overlay — scoring team logo pops over the score
+            if let url = scoringLogoURL {
+                AsyncImage(url: url) { phase in
+                    if case .success(let img) = phase {
+                        img.resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 36, height: 36)
+                    }
+                }
+                .scaleEffect(logoPopScale)
+                .opacity(logoPopOpacity)
+                .allowsHitTesting(false)
+            }
+        }
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) { isHovered = hovering }
+        }
+        .onChange(of: scoreChanged) { _, changed in
+            if changed {
+                withAnimation(.easeIn(duration: 0.15)) { flashOpacity = 0.35 }
+                withAnimation(.easeOut(duration: 1.5).delay(0.15)) { flashOpacity = 0 }
+
+                // Logo pop for scoring team
+                if let teamId = scoringTeamId {
+                    let competitor = event.competition?.competitors.first { $0.team.id == teamId }
+                    scoringLogoURL = competitor?.team.logoURL
+                    logoPopScale = 0.3
+                    logoPopOpacity = 0
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                        logoPopScale = 1.2
+                        logoPopOpacity = 0.85
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                        withAnimation(.easeOut(duration: 0.4)) {
+                            logoPopScale = 0.4
+                            logoPopOpacity = 0
+                        }
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        scoringLogoURL = nil
+                    }
+                }
+            }
         }
     }
 
@@ -134,6 +192,115 @@ struct GameRowView: View {
         .background(Capsule().fill(.orange))
     }
 
+    // MARK: - Tennis Row
+    // Detect tennis matches: linescores present AND teams look like individual players
+    // (identified by missing `location` on the athlete object)
+    private var isTennisMatch: Bool {
+        guard let comp = event.competition, comp.competitors.count == 2 else { return false }
+        let hasLineScores = comp.competitors.contains { ($0.linescores?.count ?? 0) > 0 }
+        let individualSport = comp.competitors.allSatisfy { $0.team.location.isEmpty }
+        return hasLineScores && individualSport
+    }
+
+    private var tennisSetCount: Int {
+        event.competition?.competitors
+            .map { $0.linescores?.count ?? 0 }
+            .max() ?? 0
+    }
+
+    /// Live point score from api-tennis.com (if user has configured a key)
+    private var tennisLivePoint: TennisLiveService.TennisPointData? {
+        guard event.isLive else { return nil }
+        guard let away = event.awayCompetitor?.team.displayName,
+              let home = event.homeCompetitor?.team.displayName else { return nil }
+        return TennisLiveService.shared.pointScore(player1: away, player2: home)
+    }
+
+    private func tennisRow(competitor: Competitor?) -> some View {
+        let player = competitor
+        let isWinner = player?.winner ?? false
+        let linescores = player?.linescores ?? []
+        let currentSetIdx = max(0, tennisSetCount - 1)
+        let isAway = player?.homeAway == "away" || (player?.homeAway ?? "").isEmpty && player?.id == event.awayCompetitor?.id
+
+        // Live point data from api-tennis.com
+        let livePoint = tennisLivePoint
+        // Map this player to the api-tennis "first/second" side. Our heuristic:
+        // the row's away player is player1 since that's how we pass names into matchKey.
+        let playerGameScore: String? = {
+            guard let lp = livePoint else { return nil }
+            return isAway ? lp.player1Score : lp.player2Score
+        }()
+        let playerIsServing: Bool = {
+            if let lp = livePoint {
+                return isAway ? lp.player1IsServing : !lp.player1IsServing
+            }
+            return player?.isServing ?? false
+        }()
+
+        return HStack(spacing: 8) {
+            // Seed / rank
+            if let seed = player?.seed {
+                Text("\(seed)")
+                    .font(.caption2).fontWeight(.medium)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16, alignment: .trailing)
+            } else {
+                Spacer().frame(width: 16)
+            }
+
+            TeamLogoView(url: player?.team.logoURL, size: 18)
+
+            // Name
+            Text(player?.team.abbreviation ?? player?.team.displayName ?? "—")
+                .font(.system(.subheadline, weight: isWinner ? .bold : .regular))
+                .lineLimit(1)
+                .frame(minWidth: 100, alignment: .leading)
+
+            // Serving ball indicator
+            if playerIsServing && event.isLive {
+                Circle()
+                    .fill(Color.yellow)
+                    .frame(width: 7, height: 7)
+                    .overlay(Circle().stroke(Color.orange.opacity(0.5), lineWidth: 0.5))
+            }
+
+            Spacer()
+
+            // Set-by-set columns
+            HStack(spacing: 6) {
+                ForEach(Array(linescores.enumerated()), id: \.offset) { idx, ls in
+                    if let v = ls.value {
+                        let games = Int(v)
+                        let isCurrentSet = idx == currentSetIdx && event.isLive
+                        Text("\(games)")
+                            .font(.system(.subheadline, design: .monospaced).weight(isCurrentSet ? .heavy : .semibold))
+                            .foregroundStyle(isCurrentSet ? .primary : .secondary)
+                            .frame(width: 14)
+                    } else {
+                        Text("-").foregroundStyle(.tertiary).frame(width: 14)
+                    }
+                }
+            }
+
+            // Current game score: prefer api-tennis.com live data, fall back
+            // to ESPN's competitor.score (rarely populated for tennis).
+            if event.isLive {
+                if let pg = playerGameScore, !pg.isEmpty {
+                    Text(pg)
+                        .font(.system(.subheadline, design: .monospaced).weight(.heavy))
+                        .foregroundStyle(.yellow)
+                        .frame(width: 28)
+                } else if let gameScore = player?.tennisGameScore {
+                    Text(gameScore)
+                        .font(.system(.subheadline, design: .monospaced).weight(.heavy))
+                        .foregroundStyle(.yellow)
+                        .frame(width: 28)
+                }
+            }
+        }
+    }
+
     private func teamRow(competitor: Competitor?, isWinner: Bool) -> some View {
         HStack(spacing: 8) {
             if let seed = competitor?.seed {
@@ -160,10 +327,22 @@ struct GameRowView: View {
 
             Spacer()
 
-            if let score = competitor?.score {
-                Text(score)
+            // Show numeric score if present, otherwise tennis-style set scores
+            if let raw = competitor?.score, !raw.isEmpty, raw.contains(where: { $0.isNumber }) {
+                Text(raw)
                     .font(.system(.subheadline, design: .monospaced))
                     .fontWeight(isWinner ? .bold : .regular)
+            } else if let linescores = competitor?.linescores, !linescores.isEmpty {
+                // Tennis set scores: "6 4 7"
+                HStack(spacing: 4) {
+                    ForEach(Array(linescores.enumerated()), id: \.offset) { _, ls in
+                        if let v = ls.value {
+                            Text("\(Int(v))")
+                                .font(.system(.subheadline, design: .monospaced))
+                                .fontWeight(isWinner ? .bold : .regular)
+                        }
+                    }
+                }
             }
 
             if isWinner {
@@ -186,15 +365,33 @@ struct GameRowView: View {
                     .font(.caption2)
                     .fontWeight(.medium)
                     .foregroundStyle(.red)
+
+                if let wp = event.winProbability {
+                    Text("·")
+                        .foregroundStyle(.secondary)
+                    Text("\(wp.team) \(Int(wp.probability * 100))%")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(wp.probability > 0.85 ? .green : .orange)
+                }
             }
         } else if event.isFinal {
             Text(event.status.type.detail ?? "Final")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         } else if let date = event.startDate {
-            Text(DateFormatters.timeOnly.string(from: date))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text(DateFormatters.timeOnly.string(from: date))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                if let wp = event.winProbability {
+                    Text("·")
+                        .foregroundStyle(.tertiary)
+                    Text("\(wp.team) \(Int(wp.probability * 100))%")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.blue.opacity(0.8))
+                }
+            }
         }
     }
 

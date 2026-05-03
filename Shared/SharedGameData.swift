@@ -25,10 +25,17 @@ struct SharedGame: Codable, Identifiable {
     let regionName: String?
     let broadcast: String?
     let isUpset: Bool
+    let winProbTeam: String?
+    let winProbValue: Double?
 
     var isLive: Bool { state == "in" }
     var isFinal: Bool { state == "post" }
     var isScheduled: Bool { state == "pre" }
+
+    var winProbText: String? {
+        guard let team = winProbTeam, let prob = winProbValue else { return nil }
+        return "\(team) \(Int(prob * 100))%"
+    }
 
     var awayScoreInt: Int? { Int(awayScore) }
     var homeScoreInt: Int? { Int(homeScore) }
@@ -53,6 +60,7 @@ enum SharedDataManager {
         if let data = try? JSONEncoder().encode(games) {
             defaults.set(data, forKey: gamesKey)
             defaults.set(Date(), forKey: lastUpdatedKey)
+            defaults.synchronize()
         }
     }
 

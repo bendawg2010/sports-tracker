@@ -49,7 +49,7 @@ struct ScoreboardView: View {
             VStack(spacing: 0) {
                 // View mode picker
                 HStack {
-                    Picker("Group by", selection: $viewMode) {
+                    Picker("", selection: $viewMode) {
                         ForEach(ViewMode.allCases, id: \.self) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
@@ -92,7 +92,7 @@ struct ScoreboardView: View {
         if !poller.liveGames.isEmpty {
             sectionHeader("In Progress (\(poller.liveGames.count))")
             ForEach(poller.liveGames) { game in
-                GameRowView(event: game)
+                GameRowView(event: game, scoreChanged: poller.recentScoreChanges.contains(game.id), scoringTeamId: poller.scoringTeamIds[game.id])
             }
         }
 
@@ -118,7 +118,7 @@ struct ScoreboardView: View {
         ForEach(poller.gamesByRound, id: \.0) { roundName, games in
             sectionHeader("\(roundName) (\(games.count))")
             ForEach(games) { game in
-                GameRowView(event: game)
+                GameRowView(event: game, scoreChanged: poller.recentScoreChanges.contains(game.id), scoringTeamId: poller.scoringTeamIds[game.id])
             }
         }
     }
@@ -130,7 +130,7 @@ struct ScoreboardView: View {
         ForEach(poller.gamesByDate, id: \.0) { dateString, games in
             sectionHeader("\(dateString) (\(games.count))")
             ForEach(games) { game in
-                GameRowView(event: game)
+                GameRowView(event: game, scoreChanged: poller.recentScoreChanges.contains(game.id), scoringTeamId: poller.scoringTeamIds[game.id])
             }
         }
     }

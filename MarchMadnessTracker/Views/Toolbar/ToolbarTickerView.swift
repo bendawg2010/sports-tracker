@@ -1,9 +1,28 @@
 import SwiftUI
 
 struct ToolbarTickerView: View {
-    var poller: ScorePoller
+    var manager: SportPollerManager
     var onClose: (() -> Void)?
     var onDetachGame: ((Event) -> Void)?
+
+    // Aggregates from every active poller
+    private var tickerGamesAll: [Event] { manager.allTickerGames }
+    private var hasLive: Bool { manager.hasAnyLiveGames }
+    private var liveCount: Int {
+        manager.pollers.values.reduce(0) { $0 + $1.liveGames.count }
+    }
+    private var anyLoading: Bool { manager.anyLoading }
+    private var lastUpdated: Date? {
+        manager.pollers.values.compactMap(\.lastUpdated).max()
+    }
+    private var recentScoreChanges: Set<String> {
+        manager.pollers.values.reduce(into: Set<String>()) { $0.formUnion($1.recentScoreChanges) }
+    }
+    private var scoringTeamIds: [String: String] {
+        manager.pollers.values.reduce(into: [String: String]()) { result, p in
+            result.merge(p.scoringTeamIds) { _, new in new }
+        }
+    }
     @State private var scrollOffset: CGFloat = 0
     @State private var contentWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
@@ -14,7 +33,7 @@ struct ToolbarTickerView: View {
     @AppStorage("tickerSize") private var tickerSize: Double = 38
 
     private var tickerGames: [Event] {
-        poller.tickerGames
+        tickerGamesAll
     }
 
     private var cardMode: CardMode {
@@ -38,7 +57,7 @@ struct ToolbarTickerView: View {
 
                 // Right-side controls
                 HStack(spacing: 6) {
-                    if poller.hasLiveGames {
+                    if hasLive {
                         HStack(spacing: 3) {
                             Circle()
                                 .fill(.red)
@@ -48,7 +67,7 @@ struct ToolbarTickerView: View {
                                         .stroke(.red.opacity(0.5), lineWidth: 2)
                                         .frame(width: 10, height: 10)
                                 )
-                            Text("\(poller.liveGames.count) LIVE")
+                            Text("\(liveCount) LIVE")
                                 .font(.system(size: 8, weight: .heavy))
                                 .foregroundStyle(.red)
                         }
@@ -93,9 +112,9 @@ struct ToolbarTickerView: View {
                 Image(systemName: "basketball.fill")
                     .font(.system(size: 14))
                     .foregroundStyle(.orange)
-                Text("March Madness")
+                Text("Sports Tracker")
                     .font(.system(size: 12, weight: .semibold))
-                if poller.isLoading {
+                if anyLoading {
                     ProgressView()
                         .scaleEffect(0.5)
                 } else {
@@ -108,16 +127,15 @@ struct ToolbarTickerView: View {
             GeometryReader { geo in
                 let content = tickerContent
                 Group {
-                    if needsScroll {
+                    if contentWidth > containerWidth && containerWidth > 0 {
                         HStack(spacing: 0) {
                             content
                                 .background(GeometryReader { inner in
                                     Color.clear
                                         .onAppear { contentWidth = inner.size.width }
-                                        .onChange(of: poller.lastUpdated) { _, _ in
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                contentWidth = inner.size.width
-                                            }
+                                        .onChange(of: lastUpdated) { _, _ in
+                                            let w = inner.size.width
+                                            if abs(w - contentWidth) > 1 { contentWidth = w }
                                         }
                                 })
                             content
@@ -132,10 +150,9 @@ struct ToolbarTickerView: View {
                         .background(GeometryReader { inner in
                             Color.clear
                                 .onAppear { contentWidth = inner.size.width }
-                                .onChange(of: poller.lastUpdated) { _, _ in
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        contentWidth = inner.size.width
-                                    }
+                                .onChange(of: lastUpdated) { _, _ in
+                                    let w = inner.size.width
+                                    if abs(w - contentWidth) > 1 { contentWidth = w }
                                 }
                         })
                     }
@@ -145,7 +162,7 @@ struct ToolbarTickerView: View {
                     startScrolling()
                 }
                 .onChange(of: geo.size.width) { _, newWidth in
-                    containerWidth = newWidth
+                    if abs(newWidth - containerWidth) > 1 { containerWidth = newWidth }
                 }
                 .onDisappear {
                     scrollTimer?.invalidate()
@@ -160,7 +177,7 @@ struct ToolbarTickerView: View {
     private var tickerContent: some View {
         HStack(spacing: 0) {
             ForEach(Array(tickerGames.enumerated()), id: \.element.id) { index, game in
-                TickerGameCard(event: game, mode: cardMode, now: now, tickerHeight: tickerSize, onDetach: {
+                TickerGameCard(event: game, mode: cardMode, now: now, tickerHeight: tickerSize, scoreChanged: recentScoreChanges.contains(game.id), scoringTeamId: scoringTeamIds[game.id], onDetach: {
                     onDetachGame?(game)
                 })
 
@@ -179,20 +196,26 @@ struct ToolbarTickerView: View {
 
     private func startClockRefresh() {
         refreshTimer?.invalidate()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+        // 10-second tick is plenty for countdowns displayed to the minute.
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
             now = Date()
         }
     }
 
     private func startScrolling() {
         scrollTimer?.invalidate()
-        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.025, repeats: true) { _ in
-            guard needsScroll else {
-                scrollOffset = 0
+        // Only start the scroll timer if we actually need to scroll
+        guard contentWidth > containerWidth && containerWidth > 0 else { return }
+        // 0.06s = ~16fps, plenty smooth for a ticker and 33% less CPU than 0.04s
+        scrollTimer = Timer.scheduledTimer(withTimeInterval: 0.06, repeats: true) { _ in
+            guard contentWidth > containerWidth && containerWidth > 0 else {
+                if scrollOffset != 0 { scrollOffset = 0 }
+                scrollTimer?.invalidate()
+                scrollTimer = nil
                 return
             }
             if isHovering { return }
-            scrollOffset += 0.7
+            scrollOffset += 1.1
             if scrollOffset >= contentWidth + 80 {
                 scrollOffset = 0
             }
@@ -215,8 +238,14 @@ struct TickerGameCard: View {
     let mode: CardMode
     let now: Date
     let tickerHeight: Double
+    var scoreChanged: Bool = false
+    var scoringTeamId: String? = nil
     var onDetach: (() -> Void)?
     @State private var isHovered = false
+    @State private var flashOpacity: Double = 0
+    @State private var logoPopScale: CGFloat = 0
+    @State private var logoPopOpacity: Double = 0
+    @State private var scoringLogoURL: URL?
 
     private var isClose: Bool {
         guard event.isLive, let diff = event.scoreDifference else { return false }
@@ -266,9 +295,61 @@ struct TickerGameCard: View {
         .onHover { hovering in
             isHovered = hovering
         }
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.yellow.opacity(flashOpacity))
+                .allowsHitTesting(false)
+        )
+        .overlay {
+            // Logo pop overlay — scoring team logo pops over the score
+            if let url = scoringLogoURL {
+                AsyncImage(url: url) { phase in
+                    if case .success(let img) = phase {
+                        img.resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 28, height: 28)
+                    }
+                }
+                .scaleEffect(logoPopScale)
+                .opacity(logoPopOpacity)
+                .allowsHitTesting(false)
+            }
+        }
         .contextMenu {
             Button("Detach as Widget") {
                 onDetach?()
+            }
+        }
+        .onChange(of: scoreChanged) { _, changed in
+            if changed {
+                // Flash animation
+                withAnimation(.easeIn(duration: 0.15)) {
+                    flashOpacity = 0.4
+                }
+                withAnimation(.easeOut(duration: 1.5).delay(0.15)) {
+                    flashOpacity = 0
+                }
+
+                // Logo pop for scoring team
+                if let teamId = scoringTeamId {
+                    let competitor = event.competition?.competitors.first { $0.team.id == teamId }
+                    scoringLogoURL = competitor?.team.logoURL
+                    logoPopScale = 0.2
+                    logoPopOpacity = 0
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5)) {
+                        logoPopScale = 1.3
+                        logoPopOpacity = 0.9
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+                        withAnimation(.easeOut(duration: 0.4)) {
+                            logoPopScale = 0.3
+                            logoPopOpacity = 0
+                        }
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                        scoringLogoURL = nil
+                    }
+                }
             }
         }
     }
@@ -287,9 +368,16 @@ struct TickerGameCard: View {
             // Center score block
             VStack(spacing: 1) {
                 if event.isLive || event.isFinal {
-                    Text(scoreText)
-                        .font(.system(size: 16 * scaleFactor, weight: .heavy, design: .rounded))
-                        .foregroundStyle(isClose ? .red : .primary)
+                    HStack(spacing: 4) {
+                        Text(event.awayCompetitor?.safeScore ?? "0")
+                            .font(.system(size: 16 * scaleFactor, weight: .heavy, design: .rounded))
+                        Text("-")
+                            .font(.system(size: 10 * scaleFactor, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text(event.homeCompetitor?.safeScore ?? "0")
+                            .font(.system(size: 16 * scaleFactor, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundStyle(isClose ? .red : .primary)
                 }
 
                 if event.isLive {
@@ -308,13 +396,18 @@ struct TickerGameCard: View {
                     }
                 }
             }
-            .frame(minWidth: 70)
+            .fixedSize()
 
             // Home team
             expandedTeamView(event.homeCompetitor, isWinner: isWinner(event.homeCompetitor))
 
             // Metadata
             VStack(alignment: .trailing, spacing: 2) {
+                if let wp = event.winProbability {
+                    Text("\(wp.team) \(Int(wp.probability * 100))%")
+                        .font(.system(size: 9 * scaleFactor, weight: .bold, design: .rounded))
+                        .foregroundStyle(event.isLive ? (wp.probability > 0.85 ? .green : .orange) : .blue.opacity(0.8))
+                }
                 if let broadcast = event.competition?.broadcasts?.first?.names?.first {
                     Text(broadcast)
                         .font(.system(size: 9 * scaleFactor, weight: .semibold))
@@ -386,9 +479,16 @@ struct TickerGameCard: View {
             // Score / time
             VStack(spacing: 0) {
                 if event.isLive || event.isFinal {
-                    Text(scoreText)
-                        .font(.system(size: 14 * scaleFactor, weight: .heavy, design: .rounded))
-                        .foregroundStyle(isClose ? .red : .primary)
+                    HStack(spacing: 3) {
+                        Text(event.awayCompetitor?.safeScore ?? "0")
+                            .font(.system(size: 14 * scaleFactor, weight: .heavy, design: .rounded))
+                        Text("-")
+                            .font(.system(size: 9 * scaleFactor, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text(event.homeCompetitor?.safeScore ?? "0")
+                            .font(.system(size: 14 * scaleFactor, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundStyle(isClose ? .red : .primary)
                 }
 
                 if event.isLive {
@@ -407,7 +507,7 @@ struct TickerGameCard: View {
                     }
                 }
             }
-            .frame(minWidth: 58)
+            .fixedSize()
             .padding(.horizontal, 4)
 
             // Home team
@@ -453,9 +553,16 @@ struct TickerGameCard: View {
             // Score / time
             VStack(spacing: 0) {
                 if event.isLive || event.isFinal {
-                    Text(scoreText)
-                        .font(.system(size: 12 * scaleFactor, weight: .heavy, design: .rounded))
-                        .foregroundStyle(isClose ? .red : .primary)
+                    HStack(spacing: 3) {
+                        Text(event.awayCompetitor?.safeScore ?? "0")
+                            .font(.system(size: 12 * scaleFactor, weight: .heavy, design: .rounded))
+                        Text("-")
+                            .font(.system(size: 9 * scaleFactor, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text(event.homeCompetitor?.safeScore ?? "0")
+                            .font(.system(size: 12 * scaleFactor, weight: .heavy, design: .rounded))
+                    }
+                    .foregroundStyle(isClose ? .red : .primary)
                     if event.isLive {
                         Text(shortTimeText)
                             .font(.system(size: 7 * scaleFactor, weight: .bold, design: .monospaced))
@@ -470,8 +577,8 @@ struct TickerGameCard: View {
                         .font(.system(size: 10 * scaleFactor, weight: .semibold))
                 }
             }
-            .frame(minWidth: 48)
-            .padding(.horizontal, 3)
+            .fixedSize()
+            .padding(.horizontal, 4)
 
             // Home
             Text(event.homeCompetitor?.team.abbreviation ?? "—")
@@ -589,7 +696,7 @@ struct TickerGameCard: View {
     }
 
     private var scoreText: String {
-        "\(event.awayCompetitor?.score ?? "0") - \(event.homeCompetitor?.score ?? "0")"
+        "\(event.awayCompetitor?.safeScore ?? "0") - \(event.homeCompetitor?.safeScore ?? "0")"
     }
 
     private var quarterTimeText: String {

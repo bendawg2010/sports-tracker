@@ -1,69 +1,132 @@
 import Foundation
 import Observation
+import WidgetKit
 
 @Observable
 class ScorePoller {
-    var todayGames: [Event] = []
-    var allTournamentGames: [Event] = []
+    let sportLeague: SportLeague
+
+    // MARK: - Published state
     var isLoading = false
     var lastUpdated: Date?
     var errorMessage: String?
     var allGamesLoaded = false
 
-    private var timer: Timer?
-    private let service = ESPNService()
+    var recentScoreChanges: Set<String> = []
+    var scoringTeamIds: [String: String] = [:]
 
-    /// All unique tournament games — today's live data merged with historical data
-    var games: [Event] {
-        // Merge: prefer today's data (has live scores) over historical
+    /// Callback invoked on the main actor whenever the game list is rebuilt.
+    /// Used by SportPollerManager to refresh its cached aggregates.
+    var onDataChanged: (() -> Void)?
+
+    // MARK: - Cached game lists
+    private(set) var games: [Event] = []
+    private(set) var liveGames: [Event] = []
+    private(set) var completedGames: [Event] = []
+    private(set) var scheduledGames: [Event] = []
+    private(set) var hasLiveGames: Bool = false
+    private(set) var tickerGames: [Event] = []
+
+    // MARK: - Raw data
+    private var todayGames: [Event] = [] { didSet { rebuildGameLists() } }
+    private(set) var allTournamentGames: [Event] = [] { didSet { rebuildGameLists() } }
+
+    private var previousScores: [String: (String, String)] = [:]
+    private var timer: Timer?
+    private let service: ESPNService
+
+    init(sportLeague: SportLeague) {
+        self.sportLeague = sportLeague
+        self.service = ESPNService(sportLeague: sportLeague)
+    }
+
+    // MARK: - Rebuild cached lists
+
+    private func rebuildGameLists() {
         var merged: [String: Event] = [:]
-        for game in allTournamentGames {
-            merged[game.id] = game
-        }
-        // Today's games override with fresh data
-        for game in todayGames {
-            merged[game.id] = game
-        }
-        return Array(merged.values).sorted { a, b in
+        for game in allTournamentGames { merged[game.id] = game }
+        for game in todayGames { merged[game.id] = game }
+        let sorted = Array(merged.values).sorted { a, b in
             (a.startDate ?? .distantFuture) < (b.startDate ?? .distantFuture)
         }
+
+        games = sorted
+        liveGames = sorted.filter { $0.isLive }
+        completedGames = sorted.filter { $0.isFinal }
+        scheduledGames = sorted.filter { $0.isScheduled }
+        hasLiveGames = !liveGames.isEmpty
+        tickerGames = buildTickerGames()
+        onDataChanged?()
     }
 
-    var liveGames: [Event] {
-        games.filter { $0.isLive }
-    }
+    private func buildTickerGames() -> [Event] {
+        let calendar = Calendar.current
+        let now = Date()
 
-    var completedGames: [Event] {
-        games.filter { $0.isFinal }
-    }
+        let live = liveGames.filter { hasRealTeams($0) }.sorted { a, b in
+            (a.scoreDifference ?? 999) < (b.scoreDifference ?? 999)
+        }
 
-    var scheduledGames: [Event] {
-        games.filter { $0.isScheduled }
-    }
+        let todayFinals = completedGames.filter { event in
+            hasRealTeams(event) && {
+                guard let date = event.startDate else { return false }
+                return calendar.isDateInToday(date)
+            }()
+        }.sorted { ($0.startDate ?? .distantPast) > ($1.startDate ?? .distantPast) }
 
-    var hasLiveGames: Bool {
-        !liveGames.isEmpty
+        let todayUpcoming = scheduledGames.filter { event in
+            hasRealTeams(event) && {
+                guard let date = event.startDate else { return false }
+                return calendar.isDateInToday(date) && date > now
+            }()
+        }.sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
+
+        let yesterdayFinals = completedGames.filter { event in
+            hasRealTeams(event) && {
+                guard let date = event.startDate else { return false }
+                return calendar.isDateInYesterday(date)
+            }()
+        }.sorted { ($0.startDate ?? .distantPast) > ($1.startDate ?? .distantPast) }
+
+        let result = live + todayFinals + todayUpcoming
+        if result.isEmpty {
+            let fallback = (yesterdayFinals + completedGames.filter { hasRealTeams($0) }.suffix(8))
+            var seen = Set<String>()
+            return fallback.filter { seen.insert($0.id).inserted }
+        }
+        return result
     }
 
     var currentPollingInterval: TimeInterval {
-        hasLiveGames ? Constants.livePollingInterval : Constants.idlePollingInterval
+        // Read user-adjustable polling intervals from settings.
+        // Fall back to the sport's defaults if not yet set.
+        let live = UserDefaults.standard.double(forKey: "livePollingSeconds")
+        let idle = UserDefaults.standard.double(forKey: "idlePollingSeconds")
+        let liveInterval = live > 0 ? live : sportLeague.livePollingInterval
+        let idleInterval = idle > 0 ? idle : sportLeague.idlePollingInterval
+        return hasLiveGames ? liveInterval : idleInterval
     }
 
-    /// Games grouped by round name for display
     var gamesByRound: [(String, [Event])] {
         let grouped = Dictionary(grouping: games) { event -> String in
-            event.roundName ?? "Tournament"
+            event.roundName ?? "Games"
         }
-        // Order rounds logically
-        let roundOrder = ["First Four", "1st Round", "2nd Round", "Sweet 16", "Elite 8", "Final Four", "National Championship"]
+        if sportLeague.hasBracket {
+            let roundOrder = ["First Four", "1st Round", "2nd Round", "Sweet 16", "Elite 8", "Final Four", "National Championship"]
+            return grouped.sorted { a, b in
+                let idxA = roundOrder.firstIndex(where: { a.key.localizedCaseInsensitiveContains($0) }) ?? 99
+                let idxB = roundOrder.firstIndex(where: { b.key.localizedCaseInsensitiveContains($0) }) ?? 99
+                return idxA < idxB
+            }
+        }
+        // Non-bracket sports: sort by date
         return grouped.sorted { a, b in
-            let idxA = roundOrder.firstIndex(where: { a.key.localizedCaseInsensitiveContains($0) }) ?? 99
-            let idxB = roundOrder.firstIndex(where: { b.key.localizedCaseInsensitiveContains($0) }) ?? 99
-            return idxA < idxB
+            let dateA = a.value.first?.startDate ?? .distantFuture
+            let dateB = b.value.first?.startDate ?? .distantFuture
+            return dateA < dateB
         }
     }
 
-    /// Games grouped by date for display
     var gamesByDate: [(String, [Event])] {
         let grouped = Dictionary(grouping: games) { event -> String in
             guard let date = event.startDate else { return "TBD" }
@@ -76,62 +139,18 @@ class ScorePoller {
         }
     }
 
-    /// Only games that have real teams assigned (not future TBD bracket slots)
     private func hasRealTeams(_ event: Event) -> Bool {
         guard let comp = event.competition else { return false }
-        // Must have at least 2 competitors with non-empty team names
         let realTeams = comp.competitors.filter { !$0.team.abbreviation.isEmpty && $0.team.abbreviation != "TBD" }
         return realTeams.count >= 2
-    }
-
-    /// Games for the toolbar ticker — prioritizes live & close games, then today's results
-    var tickerGames: [Event] {
-        let calendar = Calendar.current
-        let now = Date()
-
-        // 1. Live games (always show, sorted by closeness)
-        let live = liveGames.filter { hasRealTeams($0) }.sorted { a, b in
-            (a.scoreDifference ?? 999) < (b.scoreDifference ?? 999)
-        }
-
-        // 2. Today's completed games (most recent first)
-        let todayFinals = completedGames.filter { event in
-            hasRealTeams(event) && {
-                guard let date = event.startDate else { return false }
-                return calendar.isDateInToday(date)
-            }()
-        }.sorted { ($0.startDate ?? .distantPast) > ($1.startDate ?? .distantPast) }
-
-        // 3. Today's upcoming games with real teams
-        let todayUpcoming = scheduledGames.filter { event in
-            hasRealTeams(event) && {
-                guard let date = event.startDate else { return false }
-                return calendar.isDateInToday(date) && date > now
-            }()
-        }.sorted { ($0.startDate ?? .distantFuture) < ($1.startDate ?? .distantFuture) }
-
-        // 4. Yesterday's close/notable finals as fallback
-        let yesterdayFinals = completedGames.filter { event in
-            hasRealTeams(event) && {
-                guard let date = event.startDate else { return false }
-                return calendar.isDateInYesterday(date)
-            }()
-        }.sorted { ($0.startDate ?? .distantPast) > ($1.startDate ?? .distantPast) }
-
-        let result = live + todayFinals + todayUpcoming
-        if result.isEmpty {
-            // Fallback: show yesterday or most recent games with real teams
-            let fallback = (yesterdayFinals + completedGames.filter { hasRealTeams($0) }.suffix(8))
-            var seen = Set<String>()
-            return fallback.filter { seen.insert($0.id).inserted }
-        }
-        return result
     }
 
     func startPolling() {
         Task {
             await refreshNow()
-            await fetchAllTournamentGames()
+            if sportLeague.hasBracket {
+                await fetchAllTournamentGames()
+            }
         }
         scheduleTimer()
     }
@@ -146,12 +165,70 @@ class ScorePoller {
         errorMessage = nil
 
         do {
-            let response = try await service.fetchScoreboard(tournamentOnly: true)
+            // Single request instead of 3 parallel — default scoreboard already
+            // returns today's games. Only fetch tomorrow when we have no live
+            // games to be aware of upcoming matchups.
+            let defaultResponse = try await service.fetchScoreboard(tournamentOnly: false)
+
+            var allEvents: [Event] = []
+            var seenIds = Set<String>()
+
+            for event in defaultResponse.events {
+                if seenIds.insert(event.id).inserted { allEvents.append(event) }
+            }
+
+            // If the default response is empty (off-season / no games today),
+            // fall back to tomorrow so the widget can show an upcoming game.
+            if allEvents.isEmpty {
+                if let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()),
+                   let tomorrowResponse = try? await service.fetchScoreboard(date: tomorrow, tournamentOnly: false) {
+                    for event in tomorrowResponse.events {
+                        if seenIds.insert(event.id).inserted { allEvents.append(event) }
+                    }
+                }
+            }
+
+            let finalEvents = allEvents
             await MainActor.run {
-                self.todayGames = response.events
+                let allEvents = finalEvents
+                var changedIds = Set<String>()
+                var newScoringTeamIds: [String: String] = [:]
+                for event in allEvents {
+                    let awayScore = event.awayCompetitor?.safeScore ?? "0"
+                    let homeScore = event.homeCompetitor?.safeScore ?? "0"
+                    if let prev = self.previousScores[event.id] {
+                        let awayChanged = prev.0 != awayScore
+                        let homeChanged = prev.1 != homeScore
+                        if awayChanged || homeChanged {
+                            changedIds.insert(event.id)
+                            if awayChanged && !homeChanged {
+                                newScoringTeamIds[event.id] = event.awayCompetitor?.team.id ?? ""
+                            } else if homeChanged && !awayChanged {
+                                newScoringTeamIds[event.id] = event.homeCompetitor?.team.id ?? ""
+                            } else {
+                                let awayDiff = (Int(awayScore) ?? 0) - (Int(prev.0) ?? 0)
+                                let homeDiff = (Int(homeScore) ?? 0) - (Int(prev.1) ?? 0)
+                                newScoringTeamIds[event.id] = awayDiff >= homeDiff
+                                    ? (event.awayCompetitor?.team.id ?? "")
+                                    : (event.homeCompetitor?.team.id ?? "")
+                            }
+                        }
+                    }
+                    self.previousScores[event.id] = (awayScore, homeScore)
+                }
+                self.recentScoreChanges = changedIds
+                self.scoringTeamIds = newScoringTeamIds
+
+                if !changedIds.isEmpty {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                        self?.recentScoreChanges.subtract(changedIds)
+                    }
+                }
+
+                self.todayGames = allEvents
                 self.lastUpdated = Date()
                 self.isLoading = false
-                self.shareDataWithWidget()
+                WidgetCenter.shared.reloadAllTimelines()
             }
         } catch {
             await MainActor.run {
@@ -161,39 +238,9 @@ class ScorePoller {
         }
     }
 
-    /// Write game data to App Group UserDefaults so WidgetKit can read it
-    private func shareDataWithWidget() {
-        let sharedGames: [SharedGame] = games.map { event in
-            return SharedGame(
-                id: event.id,
-                awayTeam: event.awayCompetitor?.team.displayName ?? "TBD",
-                awayAbbreviation: event.awayCompetitor?.team.abbreviation ?? "TBD",
-                awayScore: event.awayCompetitor?.score ?? "0",
-                awaySeed: event.awayCompetitor?.seed,
-                awayLogo: event.awayCompetitor?.team.logo,
-                awayColor: event.awayCompetitor?.team.color,
-                homeTeam: event.homeCompetitor?.team.displayName ?? "TBD",
-                homeAbbreviation: event.homeCompetitor?.team.abbreviation ?? "TBD",
-                homeScore: event.homeCompetitor?.score ?? "0",
-                homeSeed: event.homeCompetitor?.seed,
-                homeLogo: event.homeCompetitor?.team.logo,
-                homeColor: event.homeCompetitor?.team.color,
-                state: event.status.type.state,
-                detail: event.status.type.detail,
-                shortDetail: event.status.type.shortDetail,
-                period: event.status.period,
-                displayClock: event.status.displayClock,
-                startDate: event.startDate,
-                roundName: event.roundName,
-                regionName: event.regionName,
-                broadcast: event.competition?.broadcasts?.first?.names?.first,
-                isUpset: event.isUpset
-            )
-        }
-        SharedDataManager.saveGames(sharedGames)
-    }
-
     func fetchAllTournamentGames() async {
+        guard sportLeague.hasBracket else { return }
+
         let calendar = Calendar.current
         let now = Date()
         let year = calendar.component(.year, from: now)
@@ -204,10 +251,11 @@ class ScorePoller {
               let endDate = calendar.date(from: endComponents) else { return }
 
         do {
-            let events = try await service.fetchTournamentGames(from: startDate, to: endDate)
+            let events = try await service.fetchGamesInRange(from: startDate, to: endDate)
             await MainActor.run {
                 self.allTournamentGames = events
                 self.allGamesLoaded = true
+                WidgetCenter.shared.reloadAllTimelines()
             }
         } catch {
             // Supplementary data; don't show error

@@ -1,13 +1,6 @@
 import Foundation
 
 enum Constants {
-    static let espnBaseURL = "https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball"
-    static let scoreboardEndpoint = "\(espnBaseURL)/scoreboard"
-    static let tournamentGroupID = "100" // NCAA Tournament filter
-
-    static let livePollingInterval: TimeInterval = 3
-    static let idlePollingInterval: TimeInterval = 20
-
     static let popoverWidth: CGFloat = 420
     static let popoverHeight: CGFloat = 580
 
@@ -15,6 +8,12 @@ enum Constants {
     static let closeGameTimeThreshold: Double = 300 // 5 minutes in seconds
 
     static let toolbarHeight: CGFloat = 38
+
+    /// Default selected sports for new users
+    static let defaultSelectedSportIDs = ["nba", "nfl", "mlb", "f1"]
+
+    /// UserDefaults key for selected sport IDs
+    static let selectedSportIDsKey = "selectedSportIDs"
 }
 
 // MARK: - Notification Names
@@ -25,4 +24,5 @@ extension Notification.Name {
     static let openWatchPortal = Notification.Name("openWatchPortal")
     static let openWatchGame = Notification.Name("openWatchGame")
     static let openMultiview = Notification.Name("openMultiview")
+    static let sportsSelectionChanged = Notification.Name("sportsSelectionChanged")
 }

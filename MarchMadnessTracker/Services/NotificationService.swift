@@ -4,12 +4,10 @@ import UserNotifications
 class NotificationService {
     private var notifiedCloseGameIds = Set<String>()
     private var notifiedUpsetIds = Set<String>()
+    private var notifiedHalftimeUpsetIds = Set<String>()
 
     func requestPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
-            if let error {
-                print("Notification permission error: \(error.localizedDescription)")
-            }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in
         }
     }
 
@@ -51,9 +49,35 @@ class NotificationService {
         }
     }
 
+    /// Feature #11: Alert when a 12+ seed is winning at halftime
+    func checkForHalftimeUpsets(events: [Event]) {
+        guard UserDefaults.standard.bool(forKey: "notificationsEnabled") else { return }
+
+        for event in events {
+            guard event.isLive,
+                  // At or just past halftime (period 2, clock > 19:00 means just started 2nd half)
+                  event.status.period == 2,
+                  let clock = event.status.clock,
+                  clock >= 1140, // Within first minute of 2nd half (20:00 - 19:00 = ~halftime)
+                  let underdog = event.underdog,
+                  let favorite = event.favorite,
+                  let underdogSeed = underdog.seed,
+                  underdogSeed >= 12, // Only for 12+ seeds
+                  let underdogScore = underdog.scoreInt,
+                  let favoriteScore = favorite.scoreInt,
+                  underdogScore > favoriteScore, // Underdog is winning
+                  !notifiedHalftimeUpsetIds.contains(event.id)
+            else { continue }
+
+            notifiedHalftimeUpsetIds.insert(event.id)
+            sendHalftimeUpsetNotification(event: event, underdog: underdog, favorite: favorite)
+        }
+    }
+
     func resetForNewDay() {
         notifiedCloseGameIds.removeAll()
         notifiedUpsetIds.removeAll()
+        notifiedHalftimeUpsetIds.removeAll()
     }
 
     private func sendCloseGameNotification(event: Event) {
@@ -64,8 +88,8 @@ class NotificationService {
         let home = event.homeCompetitor
         let awayName = away?.team.abbreviation ?? "Away"
         let homeName = home?.team.abbreviation ?? "Home"
-        let awayScore = away?.score ?? "0"
-        let homeScore = home?.score ?? "0"
+        let awayScore = away?.safeScore ?? "0"
+        let homeScore = home?.safeScore ?? "0"
         let clock = event.status.displayClock ?? ""
         let period = event.status.period == 2 ? "2nd Half" : "OT"
 
@@ -97,6 +121,28 @@ class NotificationService {
 
         let request = UNNotificationRequest(
             identifier: "upset-\(event.id)",
+            content: content,
+            trigger: nil
+        )
+
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    private func sendHalftimeUpsetNotification(event: Event, underdog: Competitor, favorite: Competitor) {
+        let content = UNMutableNotificationContent()
+
+        let underdogSeed = underdog.seed ?? 0
+        let favoriteSeed = favorite.seed ?? 0
+        let underdogScore = underdog.scoreInt ?? 0
+        let favoriteScore = favorite.scoreInt ?? 0
+        let lead = underdogScore - favoriteScore
+
+        content.title = "🚨 Cinderella Alert!"
+        content.body = "#\(underdogSeed) \(underdog.team.displayName) leads #\(favoriteSeed) \(favorite.team.displayName) \(underdogScore)-\(favoriteScore) at the half! (+\(lead) lead)"
+        content.sound = .default
+
+        let request = UNNotificationRequest(
+            identifier: "halftime-upset-\(event.id)",
             content: content,
             trigger: nil
         )

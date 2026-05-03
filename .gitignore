@@ -1,7 +1,38 @@
-# Xcode user state
-*.xcuserstate
+# Xcode
 xcuserdata/
-DerivedData/
+*.xcuserstate
 build/
-*.app
+DerivedData/
+*.xcscmblueprint
+*.xccheckout
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Python
+__pycache__/
+*.pyc
+
+# Node
+node_modules/
+*.log
+
+# Local dev
+*.swp
+.vscode/
+.idea/
+
+# Personal
+*.pem
+*.p12
+*.cer
+*.mobileprovision
+
+# Secrets (defense in depth)
+.env
+.env.local
+secrets.*
+api_keys.*

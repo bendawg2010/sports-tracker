@@ -1,81 +1,110 @@
-# March Madness Tracker - macOS
+# Sports Tracker
 
-A native macOS menu bar app for tracking NCAA March Madness basketball scores in real-time.
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platform: macOS 14+](https://img.shields.io/badge/Platform-macOS%2014%2B-blue)](https://www.apple.com/macos)
+[![Open Source](https://img.shields.io/badge/Open-Source-purple)](https://github.com/bendawg2010/sports-tracker)
+[![Swift 6](https://img.shields.io/badge/Swift-6-orange)](https://swift.org)
 
-![macOS](https://img.shields.io/badge/macOS-14.0+-blue) ![Swift](https://img.shields.io/badge/Swift-6-orange) ![License](https://img.shields.io/badge/license-MIT-green)
+A native macOS menu bar app that tracks live scores from 22+ sports leagues — NFL, NBA, MLB, NHL, Premier League, F1, PGA, UFC, tennis, college and more — with hand-drawn fields, courts, and rinks. Lives in your menu bar, gets out of your way, never asks for an account.
+
+![demo](docs/demo.gif)
+
+---
+
+## Install in 30 seconds
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bendawg2010/sports-tracker/main/install.sh | bash
+```
+
+Then look for the trophy in your menu bar.
+
+Prefer to click instead of type? See [INSTALL.md](INSTALL.md) for manual install, the Gatekeeper warning explainer, and build-from-source instructions.
+
+---
 
 ## Features
 
-- **Menu Bar App** - Lives in your macOS menu bar with a basketball icon. Click to see all scores.
-- **Live Scores** - Auto-refreshes every 3 seconds during live games, 20 seconds when idle.
-- **Tournament Bracket** - Browse matchups organized by region and round.
-- **Schedule** - See upcoming games with times and TV channels.
-- **Watch Games** - Embedded browser for NCAA March Madness Live. Watch games right from the app with TV provider login.
-- **Multiview** - Watch up to 4 games at once in a tiled grid. Auto-selects the most exciting games (closest scores, upsets, later rounds).
-- **Desktop Widgets** - Official macOS WidgetKit widgets for your desktop/Notification Center:
-  - **Live Score Widget** (Small/Medium/Large) - Shows current game scores
-  - **Tournament Bracket Widget** (Medium/Large/Extra Large) - Visual bracket with connecting lines
-- **Score Ticker** - Floating toolbar that scrolls live scores across the top of your screen.
-- **Floating Score Widgets** - Detach individual games as always-on-top floating windows.
-- **Notifications** - Get alerts for close games (within 5 points in final 5 minutes) and upsets.
-- **Favorite Team** - Set your favorite team to see their score right in the menu bar.
+- 🏟 **Hand-drawn widgets** — Every sport gets its own field, court, rink, or octagon, drawn in SwiftUI. Live action layered on top.
+- 📊 **22+ leagues** — NFL, NBA, MLB, NHL, NCAA (men's & women's), Premier League, La Liga, Bundesliga, Serie A, Ligue 1, MLS, UCL, PGA, ATP, WTA, F1, NASCAR, UFC and more.
+- 📌 **Floating scoreboards** — Pin any live game as a 280×180 widget that floats above every app.
+- 🎯 **Smart ticker** — Subtle scrolling ticker across the top of your screen. Close games glow. Upsets get badges.
+- 🏆 **Tournament mode** — March Madness brackets, region/round grouping, Cinderella tracking, chaos rankings.
+- ⚡ **Live play-by-play** — Dedicated Plays tab for every sport, with color-coded scoring events.
+- 🔔 **Smart notifications** — Get alerted on close games, upsets, and your favorite teams.
+- 🎾 **Tennis point scoring** — Bring your own free api-tennis.com key for live 15/30/40/Ad scoring.
+- 🪟 **Multiview** — Watch up to 4 games tiled at once via embedded ESPN/league players.
+- 🧩 **Desktop widgets** — Real WidgetKit widgets for your desktop and Notification Center.
 
-## Installation
+---
 
-### Option 1: Build from Source (Recommended)
+## Why it's free and open source
 
-**Requirements:**
-- macOS 14.0 (Sonoma) or later
-- Xcode 15 or later
-- Apple ID (free, for code signing)
+Sports apps are mostly hostile. They harvest your data, push notifications you didn't ask for, paywall basic stats, and bury everything under ads. I wanted a sports app that I'd actually want on my own machine, so I built one and put the source on GitHub.
 
-**Steps:**
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/bendawg2010/MarchMadnessTracker-macOS.git
-   cd MarchMadnessTracker-macOS
-   ```
-2. Open `MarchMadnessTracker.xcodeproj` in Xcode
-3. In Xcode, go to **Signing & Capabilities** for both the main target and ScoreWidgetExtension target:
-   - Select your Team (your Apple ID)
-   - Xcode will automatically manage signing
-4. Select the **MarchMadnessTracker** scheme (not ScoreWidgetExtension)
-5. Click **Run** (or press Cmd+R)
+It's free because it costs nothing to run — no servers, no accounts, no analytics. It's open source because I think the only way to trust software on your own computer is to be able to read it.
 
-**For Widgets to appear in Widget Gallery:**
-- The app must be code-signed (step 3 above handles this)
-- Run the app at least once
-- Right-click your desktop > "Edit Widgets..." > Search "March Madness"
+---
 
-### Option 2: Download Release
+## How to support
 
-Check the [Releases](https://github.com/bendawg2010/MarchMadnessTracker-macOS/releases) page for pre-built `.app` bundles.
+- **⭐ Star the repo** — costs you nothing, makes my day.
+- **💸 Donate** — there's a tip jar inside the app's preferences. Pay-what-you-want, totally optional.
+- **🐛 File issues** — bug reports and feature requests are gold.
+- **📣 Tell a friend** — word of mouth is everything for indie apps.
 
-## Usage
+---
 
-1. **Click the basketball icon** in your menu bar to open the popover
-2. **Tabs**: Switch between Scores, Bracket, Schedule, and Watch
-3. **Ticker**: Click "Show Ticker" in the popover footer to enable the floating score bar
-4. **Widgets**: Right-click desktop > Edit Widgets > search "March Madness"
-5. **Watch Games**: Go to the Watch tab and click any game to open it in a browser window
-6. **Multiview**: When 2+ games are live, click "Multiview" to watch multiple games at once
-7. **Settings**: Click the gear icon to set your favorite team, notification preferences, etc.
+## Privacy promise
 
-## Data Source
+**Zero tracking. No accounts. Direct ESPN.**
 
-Uses ESPN's free public API (`site.api.espn.com`) - no API key or authentication required. Filters to NCAA Tournament games only using `groups=100`.
+- No analytics SDK. No telemetry. No phone-home.
+- No account, ever — there's nothing to sign up for.
+- Data comes straight from ESPN's public API. Nothing about you ever leaves your Mac.
+- Your favorites, settings, and pinned games live in `defaults` on your machine and nowhere else.
 
-## Tech Stack
+If you don't believe me, read the source. The networking layer is one file.
 
-- **Swift 6 / SwiftUI** with AppKit bridging
-- **WidgetKit** for desktop widgets
+---
+
+## Build from source
+
+```bash
+git clone https://github.com/bendawg2010/sports-tracker.git
+cd sports-tracker
+open SportsTracker.xcodeproj
+```
+
+Then in Xcode:
+
+1. Pick the `SportsTracker` scheme.
+2. Set your free personal Team in **Signing & Capabilities** for both the main target and the widget extension.
+3. Cmd+R to run.
+
+Requirements: **macOS 14+**, **Xcode 15+**. No third-party dependencies — pure Apple frameworks.
+
+---
+
+## Architecture
+
+- **Swift 6 + SwiftUI** with a thin AppKit layer for menu bar / floating windows
+- **WidgetKit** for desktop and Notification Center widgets
 - **WebKit** for embedded game viewing
-- **No third-party dependencies** - pure Apple frameworks
+- **No third-party packages** — everything is Apple frameworks
 
-## Screenshots
+For the full feature breakdown and per-sport widget designs, see [`AppStoreDescription.md`](AppStoreDescription.md).
 
-*Coming soon*
+---
+
+## Contributing
+
+Issues and PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
 
 ## License
 
-MIT License - feel free to use and modify.
+MIT — see [LICENSE](LICENSE). Use it, fork it, ship it. Just don't claim you wrote it.
+
+Sports data provided by ESPN. Not affiliated with the NCAA, NFL, NBA, MLB, NHL, MLS, PGA Tour, ATP, WTA, FIA, UFC, or any other league or team.

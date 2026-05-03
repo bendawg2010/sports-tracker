@@ -21,9 +21,24 @@ enum DateFormatters {
         return f
     }()
 
-    /// Parse ESPN date string — tries with and without fractional seconds
+    /// Parse ESPN date string — handles all ESPN date variants:
+    /// "2026-03-20T16:15Z" (no seconds), "2026-03-20T16:15:00Z", "2026-03-20T16:15:00.000Z"
     static func parseESPNDate(_ dateString: String) -> Date? {
-        espnISO.date(from: dateString) ?? espnISONoFraction.date(from: dateString)
+        // Try with fractional seconds first
+        if let d = espnISO.date(from: dateString) { return d }
+        // Try without fractional seconds
+        if let d = espnISONoFraction.date(from: dateString) { return d }
+        // ESPN sometimes omits seconds entirely: "2026-03-20T16:15Z"
+        // Add ":00" before "Z" to make it valid
+        if dateString.hasSuffix("Z") && dateString.count <= 17 {
+            let withSeconds = dateString.replacingOccurrences(of: "Z", with: ":00Z")
+            if let d = espnISONoFraction.date(from: withSeconds) { return d }
+        }
+        // Last resort: DateFormatter
+        let fallback = DateFormatter()
+        fallback.dateFormat = "yyyy-MM-dd'T'HH:mmZ"
+        fallback.locale = Locale(identifier: "en_US_POSIX")
+        return fallback.date(from: dateString.replacingOccurrences(of: "Z", with: "+0000"))
     }
 
     static let timeOnly: DateFormatter = {

@@ -277,91 +277,313 @@ const SceneSolution: React.FC = () => {
   );
 };
 
-/* ---------------- Scene 4: Sport Carousel (9-14s, frames 270-420) -------- */
-const SceneCarousel: React.FC = () => {
+/* ---------------- Scene 4: Menu Bar Tour (9-14s, frames 270-420) -------- */
+/* Show the actual menu bar interaction: trophy icon -> click -> popover
+   springs open -> game rows visible with live scores. This is what users
+   actually see — no more abstract sport-field cards.                      */
+const SceneMenuBarTour: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const cellWidth = 300;
-  const cellHeight = 200;
-  const gap = 24;
-  const totalWidth = cellWidth * 3 + gap * 2;
+  // Phases (150 frames total = 5s @ 30fps)
+  // 0-30   : Menu bar with trophy icon, cursor moves toward it
+  // 30-45  : Click pulse on trophy icon
+  // 45-150 : Popover opens (spring), score rows tick up live
+  const cursorX = interpolate(frame, [0, 30], [380, 540], {
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.cubic),
+  });
+  const cursorY = interpolate(frame, [0, 30], [800, 105], {
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.cubic),
+  });
+  // Click ripple at frame 32
+  const clickRipple = interpolate(frame, [32, 52], [0, 1.5], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const clickRippleOpacity = interpolate(frame, [32, 52], [0.7, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  // Popover open spring at frame 38
+  const popoverOpen = spring({
+    frame: frame - 38,
+    fps,
+    config: { damping: 14, stiffness: 95, mass: 0.8 },
+  });
+  const popoverOpacity = interpolate(frame, [38, 60], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
 
-  const cellAppearStartFrames = 8;
-  const cellInterval = 12; // 250ms = ~7.5 frames -> bumped to 12 for visual rhythm
+  // Live score updates within popover
+  const dukeScore = frame < 75 ? 78 : frame < 95 ? 79 : frame < 115 ? 81 : 83;
+  const lalScore = frame < 90 ? 102 : frame < 110 ? 104 : 105;
+  const arsScore = frame < 100 ? 2 : 3;
+  const flash = (changeFrame: number) => {
+    const d = frame - changeFrame;
+    if (d < 0 || d > 14) return 0;
+    return Math.sin((d / 14) * Math.PI) * 0.85;
+  };
 
   return (
     <AbsoluteFill
       style={{
-        background: BG,
-        justifyContent: "center",
-        alignItems: "center",
-        flexDirection: "column",
-        gap: 50,
+        background:
+          "linear-gradient(135deg, #1a2a4a 0%, #2a1a3a 35%, #4a1a2a 100%)",
+        overflow: "hidden",
       }}
     >
+      {/* Wallpaper-style soft glow */}
+      <AbsoluteFill style={{ opacity: 0.5 }}>
+        <div
+          style={{
+            position: "absolute",
+            top: -200, left: -200, width: 700, height: 700,
+            borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(255,184,28,0.18), transparent 70%)",
+            filter: "blur(60px)",
+          }}
+        />
+      </AbsoluteFill>
+
+      {/* macOS Menu Bar (top edge) */}
       <div
         style={{
+          position: "absolute",
+          top: 0, left: 0, right: 0,
+          height: 100,
+          background: "rgba(20,20,28,0.85)",
+          backdropFilter: "blur(40px)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          display: "flex",
+          alignItems: "center",
+          padding: "0 32px",
+          fontFamily: FONT_STACK,
+          color: "white",
+          gap: 28,
+        }}
+      >
+        <div style={{ fontSize: 28 }}>{"\u{F8FF}"}</div>
+        <div style={{ fontWeight: 600, fontSize: 22 }}>Finder</div>
+        <div style={{ fontSize: 20, opacity: 0.65 }}>File</div>
+        <div style={{ fontSize: 20, opacity: 0.65 }}>Edit</div>
+        <div style={{ fontSize: 20, opacity: 0.65 }}>View</div>
+        <div style={{ flex: 1 }} />
+        {/* Trophy icon — pulses, then highlights when clicked */}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "10px 16px",
+            borderRadius: 12,
+            background:
+              frame >= 32 && frame < 60
+                ? "rgba(255,184,28,0.28)"
+                : "transparent",
+            transition: "background 0.2s",
+          }}
+        >
+          {/* Click ripple */}
+          {frame >= 32 && (
+            <div
+              style={{
+                position: "absolute",
+                top: "50%", left: "50%",
+                width: 10, height: 10,
+                marginTop: -5, marginLeft: -5,
+                borderRadius: "50%",
+                background: GOLD,
+                transform: `scale(${1 + clickRipple * 8})`,
+                opacity: clickRippleOpacity,
+              }}
+            />
+          )}
+          <TrophyIcon size={36} color={GOLD} />
+          <span style={{ fontWeight: 800, color: "#FF453A", fontSize: 18 }}>
+            4 LIVE
+          </span>
+        </div>
+        <div style={{ fontSize: 20, opacity: 0.7 }}>7:24 PM</div>
+      </div>
+
+      {/* POPOVER — opens from the trophy icon */}
+      <div
+        style={{
+          position: "absolute",
+          top: 110,
+          right: 200,
+          width: 720,
+          background: "rgba(15,15,20,0.97)",
+          borderRadius: 22,
+          padding: 28,
+          backdropFilter: "blur(40px)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          boxShadow: "0 40px 100px rgba(0,0,0,0.7)",
           color: "white",
           fontFamily: FONT_STACK,
-          fontSize: 72,
-          fontWeight: 900,
-          letterSpacing: -1,
-          textAlign: "center",
-          lineHeight: 1.1,
+          opacity: popoverOpacity,
+          transform: `scale(${0.85 + popoverOpen * 0.15}) translateY(${(1 - popoverOpen) * -20}px)`,
+          transformOrigin: "top right",
         }}
       >
-        <span style={{ color: GOLD }}>22+</span> sports.
-        <br />
-        One menu bar.
-      </div>
-      <div
-        style={{
-          width: totalWidth,
-          display: "grid",
-          gridTemplateColumns: `repeat(3, ${cellWidth}px)`,
-          gap,
-        }}
-      >
-        {SPORTS_GRID.map((sport, i) => {
-          const cellStart = cellAppearStartFrames + i * cellInterval;
-          const cellSpring = spring({
-            frame: frame - cellStart,
-            fps,
-            config: { damping: 14, stiffness: 90 },
-          });
-          const cellOpacity = interpolate(
-            frame,
-            [cellStart, cellStart + 8],
-            [0, 1],
-            { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
-          );
+        {/* Connector triangle to menu bar */}
+        <div
+          style={{
+            position: "absolute",
+            top: -10, right: 60,
+            width: 20, height: 20,
+            background: "rgba(15,15,20,0.97)",
+            transform: "rotate(45deg)",
+            borderTop: "1px solid rgba(255,255,255,0.1)",
+            borderLeft: "1px solid rgba(255,255,255,0.1)",
+          }}
+        />
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 22,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <TrophyIcon size={36} color={GOLD} />
+            <div style={{ fontSize: 30, fontWeight: 800 }}>Sports Tracker</div>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              color: "#FF453A",
+              fontWeight: 800,
+              fontSize: 18,
+            }}
+          >
+            <span
+              style={{
+                width: 14, height: 14, borderRadius: "50%",
+                background: "#FF453A",
+                opacity: 0.6 + 0.4 * Math.sin(frame * 0.4),
+              }}
+            />
+            4 LIVE
+          </div>
+        </div>
+
+        {/* Game rows with live ticking scores */}
+        {[
+          { away: "DUKE", home: "UNC", aColor: "#003087", hColor: "#7BAFD4",
+            aScore: dukeScore, hScore: 75, status: "2H · 4:32",
+            wp: `DUKE ${64 + (dukeScore - 78)}%`, flashOn: 75 },
+          { away: "LAL", home: "BOS", aColor: "#552583", hColor: "#007A33",
+            aScore: lalScore, hScore: 99, status: "Q4 · 1:15",
+            wp: "LAL 78%", flashOn: 90 },
+          { away: "NYY", home: "BOS", aColor: "#003087", hColor: "#BD3039",
+            aScore: 4, hScore: 3, status: "Top 5th",
+            wp: "NYY 56%", flashOn: -1 },
+          { away: "ARS", home: "MCI", aColor: "#EF0107", hColor: "#6CABDD",
+            aScore: arsScore, hScore: 2, status: "87'",
+            wp: "DRAW", flashOn: 100 },
+        ].map((g) => {
+          const f = flash(g.flashOn);
           return (
             <div
-              key={sport}
+              key={g.away}
               style={{
-                opacity: cellOpacity,
-                transform: `scale(${cellSpring})`,
-                transformOrigin: "center",
+                display: "grid",
+                gridTemplateColumns: "auto 1fr auto auto",
+                gap: 18,
+                alignItems: "center",
+                padding: "14px 16px",
+                borderRadius: 14,
+                background: `rgba(255,184,28,${f * 0.3})`,
+                marginBottom: 10,
               }}
             >
-              <SportField sport={sport} width={cellWidth} height={cellHeight} />
+              <div style={{ display: "flex", gap: 6 }}>
+                <span
+                  style={{
+                    width: 32, height: 32, borderRadius: 6,
+                    background: g.aColor,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800, fontSize: 13,
+                  }}
+                >
+                  {g.away.slice(0, 1)}
+                </span>
+                <span
+                  style={{
+                    width: 32, height: 32, borderRadius: 6,
+                    background: g.hColor,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontWeight: 800, fontSize: 13,
+                    color: "#13294B",
+                  }}
+                >
+                  {g.home.slice(0, 1)}
+                </span>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 700 }}>
+                {g.away} <span style={{ opacity: 0.5 }}>vs</span> {g.home}
+              </div>
               <div
                 style={{
-                  color: "white",
-                  fontFamily: FONT_STACK,
-                  fontSize: 22,
-                  fontWeight: 800,
-                  textAlign: "center",
-                  letterSpacing: 1.5,
-                  marginTop: 12,
+                  fontSize: 30, fontWeight: 900,
+                  fontFamily: "SF Mono, monospace",
+                  color: f > 0.05 ? GOLD : "white",
+                  filter: `brightness(${1 + f * 0.6})`,
                 }}
               >
-                {SPORT_LABELS[sport]}
+                {g.aScore}–{g.hScore}
+              </div>
+              <div
+                style={{
+                  display: "flex", flexDirection: "column",
+                  alignItems: "flex-end", gap: 2,
+                }}
+              >
+                <span style={{ fontSize: 14, color: "#FF453A", fontWeight: 700 }}>
+                  {g.status}
+                </span>
+                <span style={{ fontSize: 12, color: GOLD, fontWeight: 700 }}>
+                  {g.wp}
+                </span>
               </div>
             </div>
           );
         })}
+      </div>
+
+      {/* Cursor */}
+      <div
+        style={{
+          position: "absolute",
+          top: cursorY,
+          left: cursorX,
+          width: 32,
+          height: 32,
+          pointerEvents: "none",
+          opacity: frame < 130 ? 1 : interpolate(frame, [130, 145], [1, 0]),
+        }}
+      >
+        <svg viewBox="0 0 32 32" width="32" height="32">
+          <path
+            d="M3 3 L3 24 L9 19 L13 28 L17 26 L13 17 L21 17 Z"
+            fill="white"
+            stroke="black"
+            strokeWidth="1.5"
+          />
+        </svg>
       </div>
     </AbsoluteFill>
   );
@@ -1428,7 +1650,7 @@ export const AdSportsTracker: React.FC = () => {
       </Sequence>
       {/* 9-14s Carousel */}
       <Sequence from={270} durationInFrames={150}>
-        <SceneCarousel />
+        <SceneMenuBarTour />
       </Sequence>
       {/* 14-19s Live drawings */}
       <Sequence from={420} durationInFrames={150}>

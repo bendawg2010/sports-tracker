@@ -48,6 +48,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if UserDefaults.standard.bool(forKey: "toolbarEnabled") {
             showToolbar()
         }
+
+        // First-launch flow: open the welcome website so new users see the
+        // app tour, install instructions, and donate link before diving in.
+        let key = "hasLaunchedBefore_v1"
+        if !UserDefaults.standard.bool(forKey: key) {
+            UserDefaults.standard.set(true, forKey: key)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                if let url = URL(string: "https://sports-tracker.pages.dev") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

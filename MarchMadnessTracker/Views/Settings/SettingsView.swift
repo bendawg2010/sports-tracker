@@ -65,6 +65,8 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            // Cash App donate first — most prominent CTA
+            supportSection
             openSourceBanner
             sportsAndLeaguesSection
             dataSourcesSection
@@ -74,7 +76,6 @@ struct SettingsView: View {
             tickerBarSection
             notificationsSection
             aboutSection
-            supportSection
 
             Section {
                 Button("Quit Sports Tracker") {
@@ -579,12 +580,12 @@ struct SettingsView: View {
                     aboutLink(
                         systemImage: "hand.raised.fill",
                         label: "Privacy Policy",
-                        url: "https://sportstracker.app/privacy"
+                        url: "https://github.com/bendawg2010/sports-tracker/blob/main/PRIVACY.md"
                     )
                     aboutLink(
                         systemImage: "globe",
                         label: "Website",
-                        url: "https://sportstracker.app"
+                        url: "https://sports-tracker.pages.dev"
                     )
                     aboutLink(
                         systemImage: "chevron.left.forwardslash.chevron.right",

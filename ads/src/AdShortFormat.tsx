@@ -270,7 +270,7 @@ const ShortCta: React.FC = () => {
           opacity: urlOpacity,
         }}
       >
-        sportstracker.app
+        sports-tracker.pages.dev
       </div>
       <div
         style={{

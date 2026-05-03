@@ -724,7 +724,7 @@ const SceneCta: React.FC = () => {
   const { fps } = useVideoConfig();
 
   // Phase 1 (0-15): "Sports Tracker" big
-  // Phase 2 (15-35): "sportstracker.app"
+  // Phase 2 (15-35): "sports-tracker.pages.dev"
   // Phase 3 (35-50): "Download free"
   // Phase 4 (50-60): trophy
 
@@ -803,7 +803,7 @@ const SceneCta: React.FC = () => {
           letterSpacing: -0.5,
         }}
       >
-        sportstracker.app
+        sports-tracker.pages.dev
       </div>
 
       <div

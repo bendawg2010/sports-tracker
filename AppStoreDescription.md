@@ -109,13 +109,13 @@ live scores,sports,nfl,nba,mlb,nhl,soccer,f1,tennis,golf,ufc,ncaa,widgets,menu b
 **None.**
 
 ## Support URL (placeholder)
-https://sportstracker.app/support
+https://github.com/bendawg2010/sports-tracker/issues
 
 ## Marketing URL (placeholder)
-https://sportstracker.app
+https://sports-tracker.pages.dev
 
 ## Privacy Policy URL (placeholder — required for submission)
-https://sportstracker.app/privacy
+https://github.com/bendawg2010/sports-tracker/blob/main/PRIVACY.md
 
 ---
 

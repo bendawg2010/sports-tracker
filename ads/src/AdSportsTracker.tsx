@@ -277,10 +277,286 @@ const SceneSolution: React.FC = () => {
   );
 };
 
-/* ---------------- Scene 4: Menu Bar Tour (9-14s, frames 270-420) -------- */
-/* Show the actual menu bar interaction: trophy icon -> click -> popover
-   springs open -> game rows visible with live scores. This is what users
-   actually see — no more abstract sport-field cards.                      */
+/* ---------- Reusable: a Sports Tracker WidgetKit widget mockup ---------- */
+/* Renders the actual native macOS widget look — proper container, dark
+   gradient background like our SwiftUI .containerBackground produces,
+   game rows in the LiveScoreWidget style.                                  */
+const NativeWidgetMockup: React.FC<{
+  size: "small" | "medium" | "large";
+  scoreOffset?: number; // shift score numbers up over time
+}> = ({ size, scoreOffset = 0 }) => {
+  const dims = {
+    small:  { w: 240, h: 240, rows: 2, padding: 12, fontHeader: 13, fontTeam: 13, fontScore: 22 },
+    medium: { w: 500, h: 240, rows: 3, padding: 16, fontHeader: 14, fontTeam: 15, fontScore: 26 },
+    large:  { w: 500, h: 500, rows: 6, padding: 20, fontHeader: 16, fontTeam: 16, fontScore: 28 },
+  }[size];
+
+  const games = [
+    { away: "DUKE", home: "UNC", aS: 78 + scoreOffset, hS: 75, status: "2H · 4:32", live: true,  ac: "#003087", hc: "#7BAFD4" },
+    { away: "LAL",  home: "BOS", aS: 102 + Math.floor(scoreOffset * 1.3), hS: 99,   status: "Q4 · 1:15", live: true,  ac: "#552583", hc: "#007A33" },
+    { away: "NYY",  home: "BOS", aS: 4,   hS: 3,   status: "Top 5th",   live: true,  ac: "#003087", hc: "#BD3039" },
+    { away: "ARS",  home: "MCI", aS: 2 + (scoreOffset > 1 ? 1 : 0), hS: 2, status: "87'", live: true, ac: "#EF0107", hc: "#6CABDD" },
+    { away: "VER",  home: "HAM", aS: 1,   hS: 2,   status: "Lap 38/57", live: true,  ac: "#0600EF", hc: "#00D2BE" },
+    { away: "PSG",  home: "RMA", aS: 0,   hS: 1,   status: "62'",       live: true,  ac: "#004170", hc: "#FFFFFF" },
+  ].slice(0, dims.rows);
+
+  return (
+    <div
+      style={{
+        width: dims.w,
+        height: dims.h,
+        // Same .containerBackground gradient our real widget uses
+        background: "linear-gradient(180deg, #0F0F14, #1A1A22)",
+        borderRadius: 26,
+        padding: dims.padding,
+        boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
+        display: "flex",
+        flexDirection: "column",
+        gap: dims.padding * 0.5,
+        fontFamily: FONT_STACK,
+        color: "white",
+        // Subtle Apple-widget glassy edge
+        border: "1px solid rgba(255,255,255,0.06)",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <TrophyIcon size={dims.fontHeader * 1.5} color={GOLD} />
+          <span style={{ fontSize: dims.fontHeader, fontWeight: 700 }}>Sports Tracker</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 4, color: "#FF453A" }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FF453A" }} />
+          <span style={{ fontSize: dims.fontHeader * 0.75, fontWeight: 800 }}>LIVE</span>
+        </div>
+      </div>
+
+      {games.map((g) => (
+        <div
+          key={g.away}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr auto",
+            alignItems: "center",
+            gap: 6,
+            padding: "4px 0",
+            borderTop: "1px solid rgba(255,255,255,0.05)",
+          }}
+        >
+          <div style={{ display: "flex", gap: 3 }}>
+            <span
+              style={{
+                width: dims.fontTeam * 1.3, height: dims.fontTeam * 1.3, borderRadius: 4,
+                background: g.ac, color: "white",
+                fontSize: dims.fontTeam * 0.7, fontWeight: 800,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >{g.away.charAt(0)}</span>
+            <span
+              style={{
+                width: dims.fontTeam * 1.3, height: dims.fontTeam * 1.3, borderRadius: 4,
+                background: g.hc, color: "#13294B",
+                fontSize: dims.fontTeam * 0.7, fontWeight: 800,
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >{g.home.charAt(0)}</span>
+          </div>
+          <div style={{ fontSize: dims.fontTeam, fontWeight: 600 }}>
+            <span style={{ opacity: 0.85 }}>{g.away}</span>{" "}
+            <span style={{ color: "rgba(255,255,255,0.4)" }}>vs</span>{" "}
+            <span style={{ opacity: 0.85 }}>{g.home}</span>
+            <div style={{ fontSize: dims.fontTeam * 0.65, color: "#FF453A", fontWeight: 700, marginTop: 1 }}>
+              {g.status}
+            </div>
+          </div>
+          <div
+            style={{
+              fontSize: dims.fontScore,
+              fontWeight: 900,
+              fontFamily: "SF Mono, monospace",
+              color: g.live ? GOLD : "white",
+            }}
+          >
+            {g.aS}–{g.hS}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ---------------- Scene 4: Widget Gallery (9-14s, frames 270-420) -------- */
+/* Shows that this is a real, native macOS WidgetKit widget — render a
+   Notification Center sliding in from the right, the Sports Tracker widget
+   sitting in the gallery, and an "Apple WidgetKit" badge.                  */
+const SceneWidgetGallery: React.FC = () => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+
+  // Notification Center slides in from the right
+  const slideIn = spring({
+    frame,
+    fps,
+    config: { damping: 18, stiffness: 70, mass: 1 },
+  });
+  const slideX = interpolate(slideIn, [0, 1], [600, 0]);
+  // Widget sizes appear staggered
+  const smallScale  = spring({ frame: frame - 28, fps, config: { damping: 14 } });
+  const mediumScale = spring({ frame: frame - 42, fps, config: { damping: 14 } });
+  const largeScale  = spring({ frame: frame - 56, fps, config: { damping: 14 } });
+  // Caption fade in
+  const capOpacity = interpolate(frame, [50, 75], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+
+  return (
+    <AbsoluteFill
+      style={{
+        background:
+          "linear-gradient(135deg, #1a2a4a 0%, #2a1a3a 35%, #4a1a2a 100%)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Wallpaper-style soft glows */}
+      <AbsoluteFill style={{ opacity: 0.5 }}>
+        <div
+          style={{
+            position: "absolute", top: -200, left: -200,
+            width: 700, height: 700, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(255,184,28,0.18), transparent 70%)",
+            filter: "blur(60px)",
+          }}
+        />
+      </AbsoluteFill>
+
+      {/* macOS Menu Bar (top) */}
+      <div
+        style={{
+          position: "absolute", top: 0, left: 0, right: 0, height: 80,
+          background: "rgba(20,20,28,0.85)",
+          backdropFilter: "blur(40px)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          display: "flex", alignItems: "center", padding: "0 28px",
+          fontFamily: FONT_STACK, color: "white", gap: 24,
+        }}
+      >
+        <div style={{ fontSize: 22 }}>{"\u{F8FF}"}</div>
+        <div style={{ fontWeight: 600, fontSize: 18 }}>Finder</div>
+        <div style={{ flex: 1 }} />
+        <TrophyIcon size={28} color={GOLD} />
+        <span style={{ fontWeight: 800, color: "#FF453A", fontSize: 15 }}>4 LIVE</span>
+        <div style={{ fontSize: 17, opacity: 0.7 }}>7:24 PM</div>
+      </div>
+
+      {/* Notification Center sliding in from right */}
+      <div
+        style={{
+          position: "absolute",
+          top: 90,
+          right: 30,
+          bottom: 30,
+          width: 620,
+          background: "rgba(15,15,22,0.85)",
+          backdropFilter: "blur(40px)",
+          borderRadius: 28,
+          border: "1px solid rgba(255,255,255,0.08)",
+          padding: "30px 30px 24px",
+          transform: `translateX(${slideX}px)`,
+          boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+          display: "flex", flexDirection: "column",
+          fontFamily: FONT_STACK, color: "white",
+        }}
+      >
+        {/* Section header */}
+        <div
+          style={{
+            fontSize: 24, fontWeight: 800, marginBottom: 16,
+            display: "flex", alignItems: "center", gap: 10,
+          }}
+        >
+          <span style={{ fontSize: 22 }}>📅</span>
+          Today
+        </div>
+
+        {/* Three widget sizes laid out */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16, alignItems: "center", flex: 1 }}>
+          <div style={{ transform: `scale(${largeScale * 0.9})`, transformOrigin: "center" }}>
+            <NativeWidgetMockup size="large" scoreOffset={Math.floor(frame / 30)} />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 16,
+              transform: `scale(${mediumScale})`,
+              transformOrigin: "center",
+            }}
+          >
+            <div style={{ transform: `scale(${smallScale * 0.85})` }}>
+              <NativeWidgetMockup size="small" scoreOffset={Math.floor(frame / 30)} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Left side caption — "Native Apple Widget" */}
+      <div
+        style={{
+          position: "absolute",
+          top: 280,
+          left: 80,
+          width: 600,
+          color: "white",
+          fontFamily: FONT_STACK,
+          opacity: capOpacity,
+        }}
+      >
+        <div
+          style={{
+            display: "inline-block",
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            borderRadius: 999,
+            padding: "8px 18px",
+            fontSize: 18,
+            fontWeight: 700,
+            color: GOLD,
+            marginBottom: 24,
+            letterSpacing: 0.5,
+          }}
+        >
+          BUILT WITH APPLE WIDGETKIT
+        </div>
+        <div
+          style={{
+            fontSize: 96,
+            fontWeight: 900,
+            letterSpacing: -3,
+            lineHeight: 1.0,
+            marginBottom: 20,
+          }}
+        >
+          A real
+          <br />
+          <span style={{ color: GOLD }}>native widget.</span>
+        </div>
+        <div
+          style={{
+            fontSize: 28,
+            fontWeight: 600,
+            color: "rgba(255,255,255,0.75)",
+            lineHeight: 1.3,
+          }}
+        >
+          Add it from Notification Center.
+          <br />
+          Three sizes. 100% Swift. Zero hacks.
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+/* ---------------- Old Menu Bar Tour kept around for reference ---------- */
 const SceneMenuBarTour: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
@@ -688,561 +964,109 @@ const SceneLiveDrawings: React.FC = () => {
   );
 };
 
-/* ---------- Scene 5b: Desktop Showcase — the app actually working ---------- */
+/* ---------- Scene 5b: Widget On Desktop — the WidgetKit hero shot ---------- */
 const SceneDesktopShowcase: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Easing for whole-scene entry
-  const enter = spring({
-    frame,
-    fps,
-    config: { damping: 16, stiffness: 70, mass: 0.8 },
-  });
+  // Whole-scene entry
+  const enter = spring({ frame, fps, config: { damping: 14, stiffness: 70, mass: 0.8 } });
 
-  // Score animation: each game's away/home score ticks upward over time
-  // Duke = 78 → 81, UNC = 75 → 75, LAL = 102 → 105, BOS = 99 → 99
-  const dukeScore =
-    frame < 30 ? 78 : frame < 50 ? 79 : frame < 65 ? 81 : 81;
-  const lalScore =
-    frame < 20 ? 102 : frame < 40 ? 104 : frame < 60 ? 105 : 105;
-  const arsScore = frame < 45 ? 2 : 3; // soccer goal at ~45f
+  // The widget pulses gently when fresh data lands (every ~30 frames)
+  const pulseFrame = frame % 30;
+  const pulse = pulseFrame < 6 ? Math.sin((pulseFrame / 6) * Math.PI) * 0.05 : 0;
 
-  // Score flash effect — bright pulse when a score changes
-  const scoreFlash = (changeFrame: number) => {
-    const d = frame - changeFrame;
-    if (d < 0 || d > 18) return 0;
-    return Math.sin((d / 18) * Math.PI) * 0.7;
-  };
+  // Score offset ticks up over time so users see the widget UPDATE
+  const scoreOffset = Math.floor(frame / 24);
 
-  // Ticker scroll position
-  const tickerOffset = (frame * 8) % 1400;
+  // Caption fade
+  const capFade = interpolate(frame, [20, 50], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill
       style={{
-        // Faux macOS "Big Sur" wallpaper gradient
-        background:
-          "linear-gradient(135deg, #1a2a4a 0%, #2a1a3a 35%, #4a1a2a 100%)",
+        background: "linear-gradient(135deg, #1a2a4a 0%, #2a1a3a 35%, #4a1a2a 100%)",
         overflow: "hidden",
       }}
     >
-      {/* Subtle wallpaper noise/glow */}
-      <AbsoluteFill style={{ opacity: 0.4 }}>
-        <div
-          style={{
-            position: "absolute",
-            top: -200,
-            left: -200,
-            width: 700,
-            height: 700,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(255,184,28,0.15), transparent 70%)",
-            filter: "blur(60px)",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: -300,
-            right: -300,
-            width: 800,
-            height: 800,
-            borderRadius: "50%",
-            background:
-              "radial-gradient(circle, rgba(255,69,58,0.12), transparent 70%)",
-            filter: "blur(80px)",
-          }}
-        />
+      {/* Wallpaper glows */}
+      <AbsoluteFill style={{ opacity: 0.6 }}>
+        <div style={{
+          position: "absolute", top: -150, right: -150, width: 700, height: 700,
+          borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(255,184,28,0.20), transparent 70%)",
+          filter: "blur(60px)",
+        }} />
+        <div style={{
+          position: "absolute", bottom: -250, left: -250, width: 800, height: 800,
+          borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(85,37,131,0.18), transparent 70%)",
+          filter: "blur(80px)",
+        }} />
       </AbsoluteFill>
 
-      {/* ============= MENU BAR (top of screen, scrolling ticker) ============= */}
-      <div
-        style={{
-          position: "absolute",
-          top: 60,
-          left: 60,
-          right: 60,
-          height: 88,
-          background: "rgba(20,20,28,0.92)",
-          borderTopLeftRadius: 20,
-          borderTopRightRadius: 20,
-          backdropFilter: "blur(40px)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          display: "flex",
-          alignItems: "center",
-          padding: "0 24px",
-          fontFamily: FONT_STACK,
-          color: "white",
-          gap: 24,
-          opacity: enter,
-        }}
-      >
-        {/* Apple logo */}
+      {/* macOS Menu Bar */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0, height: 80,
+        background: "rgba(20,20,28,0.85)",
+        backdropFilter: "blur(40px)",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        display: "flex", alignItems: "center", padding: "0 28px",
+        fontFamily: FONT_STACK, color: "white", gap: 24,
+      }}>
         <div style={{ fontSize: 22 }}>{"\u{F8FF}"}</div>
         <div style={{ fontWeight: 600, fontSize: 18 }}>Finder</div>
-        <div style={{ flex: 1, overflow: "hidden", marginRight: 24 }}>
-          {/* Ticker scrolling fast */}
-          <div
-            style={{
-              transform: `translateX(${-tickerOffset}px)`,
-              whiteSpace: "nowrap",
-              fontSize: 22,
-              fontWeight: 600,
-              display: "inline-flex",
-              gap: 60,
-            }}
-          >
-            <span>
-              <span style={{ color: "#FF453A" }}>●</span> DUKE{" "}
-              <b
-                style={{
-                  color: "#FFB81C",
-                  filter: `brightness(${1 + scoreFlash(30)})`,
-                }}
-              >
-                {dukeScore}
-              </b>{" "}
-              · UNC <b>75</b> · 2H 4:32
-            </span>
-            <span>
-              <span style={{ color: "#FF453A" }}>●</span> LAL{" "}
-              <b
-                style={{
-                  color: "#FFB81C",
-                  filter: `brightness(${1 + scoreFlash(20)})`,
-                }}
-              >
-                {lalScore}
-              </b>{" "}
-              · BOS <b>99</b> · Q4 1:15
-            </span>
-            <span style={{ opacity: 0.6 }}>NYY 4 · BOS 3 · Top 5th</span>
-            <span>
-              <span style={{ color: "#FF453A" }}>●</span> ARS{" "}
-              <b
-                style={{
-                  color: "#FFB81C",
-                  filter: `brightness(${1 + scoreFlash(45)})`,
-                }}
-              >
-                {arsScore}
-              </b>{" "}
-              · MCI <b>2</b> · 87'
-            </span>
-            <span style={{ opacity: 0.6 }}>VER P1 · Lap 38/57</span>
-            <span>
-              <span style={{ color: "#FF453A" }}>●</span> DUKE{" "}
-              <b style={{ color: "#FFB81C" }}>{dukeScore}</b> · UNC <b>75</b>
-            </span>
-          </div>
-        </div>
-        {/* Trophy + LIVE badge */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            padding: "6px 12px",
-            borderRadius: 8,
-            background: "rgba(255,184,28,0.15)",
-          }}
-        >
-          <TrophyIcon size={28} color={GOLD} />
-          <span style={{ color: "#FF453A", fontWeight: 800, fontSize: 16 }}>
-            4 LIVE
-          </span>
-        </div>
-        <div style={{ fontSize: 18, opacity: 0.7 }}>
-          {(() => {
-            const sec = Math.floor(frame / 30);
-            return `7:${String(20 + sec).padStart(2, "0")} PM`;
-          })()}
-        </div>
+        <div style={{ flex: 1 }} />
+        <TrophyIcon size={28} color={GOLD} />
+        <span style={{ fontWeight: 800, color: "#FF453A", fontSize: 15 }}>4 LIVE</span>
+        <div style={{ fontSize: 17, opacity: 0.7 }}>7:24 PM</div>
       </div>
 
-      {/* ============= POPOVER (attached to menu bar, opens with spring) ============= */}
-      <div
-        style={{
-          position: "absolute",
-          top: 160,
-          left: "50%",
-          transform: `translateX(-50%) scale(${0.9 + enter * 0.1}) translateY(${(1 - enter) * -20}px)`,
-          width: 760,
-          background: "rgba(15,15,20,0.96)",
-          borderRadius: 22,
-          padding: 28,
-          backdropFilter: "blur(40px)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
-          color: "white",
-          fontFamily: FONT_STACK,
-          opacity: enter,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 20,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <TrophyIcon size={36} color={GOLD} />
-            <div style={{ fontSize: 32, fontWeight: 800 }}>Sports Tracker</div>
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              color: "#FF453A",
-              fontWeight: 800,
-              fontSize: 18,
-            }}
-          >
-            <span
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: "50%",
-                background: "#FF453A",
-                display: "inline-block",
-                opacity: 0.6 + 0.4 * Math.sin(frame * 0.4),
-              }}
-            />
-            4 LIVE
-          </div>
-        </div>
-
-        {/* Game rows — three with animated scores */}
-        {[
-          {
-            away: "DUKE",
-            home: "UNC",
-            awayColor: "#003087",
-            homeColor: "#7BAFD4",
-            awayScore: dukeScore,
-            homeScore: 75,
-            status: "2H · 4:32",
-            wp: "DUKE 62%",
-            flashOn: 30,
-          },
-          {
-            away: "LAL",
-            home: "BOS",
-            awayColor: "#552583",
-            homeColor: "#007A33",
-            awayScore: lalScore,
-            homeScore: 99,
-            status: "Q4 · 1:15",
-            wp: "LAL 78%",
-            flashOn: 20,
-          },
-          {
-            away: "ARS",
-            home: "MCI",
-            awayColor: "#EF0107",
-            homeColor: "#6CABDD",
-            awayScore: arsScore,
-            homeScore: 2,
-            status: "87'",
-            wp: "DRAW",
-            flashOn: 45,
-          },
-        ].map((g) => {
-          const flash = scoreFlash(g.flashOn);
-          return (
-            <div
-              key={g.away}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto auto",
-                gap: 18,
-                alignItems: "center",
-                padding: "14px 16px",
-                borderRadius: 14,
-                background: `rgba(255,184,28,${flash * 0.25})`,
-                marginBottom: 10,
-                transition: "background 0.1s",
-              }}
-            >
-              <div style={{ display: "flex", gap: 8 }}>
-                <span
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 6,
-                    background: g.awayColor,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 800,
-                    fontSize: 14,
-                  }}
-                >
-                  {g.away.slice(0, 1)}
-                </span>
-                <span
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 6,
-                    background: g.homeColor,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontWeight: 800,
-                    fontSize: 14,
-                    color: "#13294B",
-                  }}
-                >
-                  {g.home.slice(0, 1)}
-                </span>
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 700 }}>
-                {g.away} <span style={{ opacity: 0.5 }}>vs</span> {g.home}
-              </div>
-              <div
-                style={{
-                  fontSize: 30,
-                  fontWeight: 900,
-                  fontFamily: "SF Mono, monospace",
-                  color: flash > 0.05 ? GOLD : "white",
-                  filter: `brightness(${1 + flash * 0.6})`,
-                }}
-              >
-                {g.awayScore}–{g.homeScore}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-end",
-                  gap: 2,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 14,
-                    color: "#FF453A",
-                    fontWeight: 700,
-                  }}
-                >
-                  {g.status}
-                </span>
-                <span style={{ fontSize: 12, color: GOLD, fontWeight: 700 }}>
-                  {g.wp}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+      {/* Big "WidgetKit" caption header */}
+      <div style={{
+        position: "absolute", top: 130, left: 0, right: 0,
+        textAlign: "center", color: "white", fontFamily: FONT_STACK,
+        opacity: capFade,
+      }}>
+        <div style={{
+          display: "inline-block",
+          background: "rgba(255,255,255,0.06)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: 999,
+          padding: "6px 16px",
+          fontSize: 16, fontWeight: 700,
+          color: GOLD, letterSpacing: 0.4,
+        }}>NATIVE macOS WIDGET · BUILT WITH WIDGETKIT</div>
       </div>
 
-      {/* ============= PINNED FLOATING WIDGETS in corners ============= */}
-      {/* Bottom-left: Duke vs UNC widget */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 80,
-          left: 80,
-          width: 320,
-          background: "rgba(15,15,20,0.9)",
-          borderRadius: 22,
-          padding: 18,
-          backdropFilter: "blur(30px)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          color: "white",
-          fontFamily: FONT_STACK,
-          transform: `translateY(${(1 - enter) * 40}px) scale(${0.85 + enter * 0.15})`,
-          opacity: enter,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,184,28,0.05)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 12,
-          }}
-        >
-          <span
-            style={{
-              color: "#FF453A",
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: 1,
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "#FF453A",
-                opacity: 0.6 + 0.4 * Math.sin(frame * 0.4),
-              }}
-            />
-            LIVE
-          </span>
-          <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
-            2H · 4:32
-          </span>
-        </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
-            gap: 16,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>DUKE</div>
-            <div
-              style={{
-                fontSize: 56,
-                fontWeight: 900,
-                color: scoreFlash(30) > 0.05 ? GOLD : "white",
-                filter: `brightness(${1 + scoreFlash(30) * 0.8})`,
-                fontFamily: "SF Mono, monospace",
-              }}
-            >
-              {dukeScore}
-            </div>
-          </div>
-          <div style={{ fontSize: 18, opacity: 0.4 }}>VS</div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>UNC</div>
-            <div
-              style={{
-                fontSize: 56,
-                fontWeight: 900,
-                color: "rgba(255,255,255,0.7)",
-                fontFamily: "SF Mono, monospace",
-              }}
-            >
-              75
-            </div>
-          </div>
-        </div>
+      {/* THE HERO: a large native widget right in the center of the desktop */}
+      <div style={{
+        position: "absolute",
+        top: "50%", left: "50%",
+        transform: `translate(-50%, -50%) scale(${(0.85 + enter * 0.15) * (1 + pulse)})`,
+        opacity: enter,
+        // Outer "selected" gold ring that pulses subtly
+        padding: 4,
+        borderRadius: 30,
+        background: pulse > 0.01
+          ? `radial-gradient(circle, rgba(255,184,28,${0.5 + pulse * 4}), rgba(255,184,28,0))`
+          : "transparent",
+      }}>
+        <NativeWidgetMockup size="large" scoreOffset={scoreOffset} />
       </div>
 
-      {/* Bottom-right: LAL vs BOS widget */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 80,
-          right: 80,
-          width: 320,
-          background: "rgba(15,15,20,0.9)",
-          borderRadius: 22,
-          padding: 18,
-          backdropFilter: "blur(30px)",
-          border: "1px solid rgba(255,255,255,0.1)",
-          color: "white",
-          fontFamily: FONT_STACK,
-          transform: `translateY(${(1 - enter) * 60}px) scale(${0.85 + enter * 0.15})`,
-          opacity: enter,
-          boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            marginBottom: 12,
-          }}
-        >
-          <span
-            style={{
-              color: "#FF453A",
-              fontSize: 12,
-              fontWeight: 800,
-              letterSpacing: 1,
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            <span
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: "#FF453A",
-                opacity: 0.6 + 0.4 * Math.sin(frame * 0.4 + 1),
-              }}
-            />
-            LIVE
-          </span>
-          <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 13 }}>
-            Q4 · 1:15
-          </span>
+      {/* Bottom caption */}
+      <div style={{
+        position: "absolute", bottom: 60, left: 0, right: 0,
+        textAlign: "center", color: "white", fontFamily: FONT_STACK,
+        opacity: capFade,
+      }}>
+        <div style={{ fontSize: 36, fontWeight: 800, letterSpacing: -1 }}>
+          Lives in <span style={{ color: GOLD }}>Notification Center</span>.
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
-            gap: 16,
-            alignItems: "center",
-          }}
-        >
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>LAL</div>
-            <div
-              style={{
-                fontSize: 56,
-                fontWeight: 900,
-                color: scoreFlash(20) > 0.05 ? GOLD : "white",
-                filter: `brightness(${1 + scoreFlash(20) * 0.8})`,
-                fontFamily: "SF Mono, monospace",
-              }}
-            >
-              {lalScore}
-            </div>
-          </div>
-          <div style={{ fontSize: 18, opacity: 0.4 }}>VS</div>
-          <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>BOS</div>
-            <div
-              style={{
-                fontSize: 56,
-                fontWeight: 900,
-                color: "rgba(255,255,255,0.7)",
-                fontFamily: "SF Mono, monospace",
-              }}
-            >
-              99
-            </div>
-          </div>
+        <div style={{ fontSize: 20, fontWeight: 600, color: "rgba(255,255,255,0.65)", marginTop: 8 }}>
+          Updates automatically. Like every other Apple widget.
         </div>
-      </div>
-
-      {/* Caption strip at very bottom */}
-      <div
-        style={{
-          position: "absolute",
-          bottom: 18,
-          left: 0,
-          right: 0,
-          textAlign: "center",
-          color: "rgba(255,255,255,0.85)",
-          fontFamily: FONT_STACK,
-          fontSize: 22,
-          fontWeight: 700,
-          letterSpacing: 0.5,
-          opacity: enter,
-        }}
-      >
-        Live. Right where you work.
       </div>
     </AbsoluteFill>
   );
@@ -1650,7 +1474,7 @@ export const AdSportsTracker: React.FC = () => {
       </Sequence>
       {/* 9-14s Carousel */}
       <Sequence from={270} durationInFrames={150}>
-        <SceneMenuBarTour />
+        <SceneWidgetGallery />
       </Sequence>
       {/* 14-19s Live drawings */}
       <Sequence from={420} durationInFrames={150}>

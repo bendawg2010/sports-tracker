@@ -1,0 +1,45 @@
+# Cloudflare Pages headers — Sports Tracker promo site
+# Docs: https://developers.cloudflare.com/pages/platform/headers/
+
+# ------------------------------------------------------------------
+# Default — applied to every response, then overridden below
+# ------------------------------------------------------------------
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
+  X-Robots-Tag: index, follow
+
+# ------------------------------------------------------------------
+# HTML — short cache, must-revalidate so users always get the latest
+# ------------------------------------------------------------------
+/
+  Cache-Control: public, max-age=300, s-maxage=600, must-revalidate
+/index.html
+  Cache-Control: public, max-age=300, s-maxage=600, must-revalidate
+
+# ------------------------------------------------------------------
+# Static assets — long cache, immutable when fingerprinted
+# (Bump filename or add a version query when deploying changes.)
+# ------------------------------------------------------------------
+/style.css
+  Cache-Control: public, max-age=86400, s-maxage=604800
+/script.js
+  Cache-Control: public, max-age=86400, s-maxage=604800
+
+# Images, fonts, etc. (none currently shipped, but future-proof)
+/*.svg
+  Cache-Control: public, max-age=2592000, immutable
+/*.png
+  Cache-Control: public, max-age=2592000, immutable
+/*.jpg
+  Cache-Control: public, max-age=2592000, immutable
+/*.webp
+  Cache-Control: public, max-age=2592000, immutable
+/*.woff2
+  Cache-Control: public, max-age=31536000, immutable

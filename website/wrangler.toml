@@ -1,0 +1,13 @@
+# Cloudflare Pages configuration for Sports Tracker promo site.
+#
+# Deploy from this directory with:
+#   wrangler pages deploy
+#
+# First-time setup will prompt you to attach this to a Cloudflare Pages
+# project; subsequent runs reuse the saved binding in .wrangler/.
+#
+# Docs: https://developers.cloudflare.com/pages/functions/wrangler-configuration/
+
+name = "sports-tracker"
+compatibility_date = "2026-04-14"
+pages_build_output_dir = "."
